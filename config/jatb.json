@@ -1,0 +1,80 @@
+{
+  "story_id": "jatb",
+  "story_name": "Jack and the Beanstalk",
+  "gender": "boy",
+  "pages": [
+    {
+      "page_number": 1,
+      "scene_desc": "Cover with child as Jack",
+      "text": "{title}",
+      "image_prompt_template": "Cover portrait, satchel; distant beanstalk hint; full‑bleed; title '{title}' visible."
+    },
+    {
+      "page_number": 2,
+      "scene_desc": "Trade for beans",
+      "text": "{child_name} traded a tiny trinket for twinkling beans.",
+      "image_prompt_template": "Village market; whimsical."
+    },
+    {
+      "page_number": 3,
+      "scene_desc": "Overnight growth",
+      "text": "By dawn, a beanstalk touched the sky!",
+      "image_prompt_template": "Exterior home; spiraling beanstalk."
+    },
+    {
+      "page_number": 4,
+      "scene_desc": "Climb into clouds",
+      "text": "{child_name} climbed to a world of soft light.",
+      "image_prompt_template": "Sky realm; soft clouds."
+    },
+    {
+      "page_number": 5,
+      "scene_desc": "Gentle giant",
+      "text": "A gentle giant waved from a floating garden.",
+      "image_prompt_template": "Friendly large figure; flowers."
+    },
+    {
+      "page_number": 6,
+      "scene_desc": "Clever puzzle",
+      "text": "With kindness, {child_name} solved a clever puzzle.",
+      "image_prompt_template": "Puzzle scene, glowing stones."
+    },
+    {
+      "page_number": 7,
+      "scene_desc": "Playful escape",
+      "text": "Together they whooshed down the beanstalk.",
+      "image_prompt_template": "Dynamic descent; wind and laughter."
+    },
+    {
+      "page_number": 8,
+      "scene_desc": "Sharing wonder",
+      "text": "{child_name} shared the sky's secrets with everyone.",
+      "image_prompt_template": "Village square; storytelling."
+    },
+    {
+      "page_number": 9,
+      "scene_desc": "Neighbors gather",
+      "text": "Neighbors gathered, eyes wide with delight.",
+      "image_prompt_template": "Crowd scene."
+    },
+    {
+      "page_number": 10,
+      "scene_desc": "Cozy evening",
+      "text": "Cocoa and stories warmed the night.",
+      "image_prompt_template": "Home interior; cozy lights."
+    },
+    {
+      "page_number": 11,
+      "scene_desc": "Thanks to the sky",
+      "text": "{child_name} thanked the sky for surprises.",
+      "image_prompt_template": "Backyard, stars."
+    },
+    {
+      "page_number": 12,
+      "scene_desc": "Moral finale",
+      "text": "Curiosity grows miracles for {child_name}.",
+      "image_prompt_template": "Final pose; subtle end-card."
+    }
+  ]
+}
+

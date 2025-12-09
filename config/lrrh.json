@@ -1,0 +1,80 @@
+{
+  "story_id": "lrrh",
+  "story_name": "Little Red Riding Hood",
+  "gender": "girl",
+  "pages": [
+    {
+      "page_number": 1,
+      "scene_desc": "Cover with child as Little Red Riding Hood",
+      "text": "{title}",
+      "image_prompt_template": "Cover portrait, red hood, basket, friendly forest; full‑bleed; title '{title}' visible."
+    },
+    {
+      "page_number": 2,
+      "scene_desc": "Mother gives basket",
+      "text": "One day, {child_name} packed a cozy basket for Grandma.",
+      "image_prompt_template": "Warm kitchen interior; mother handing basket."
+    },
+    {
+      "page_number": 3,
+      "scene_desc": "Forest path, singing",
+      "text": "Birdsong and sunshine guided each careful step.",
+      "image_prompt_template": "Forest path, dappled light; child humming."
+    },
+    {
+      "page_number": 4,
+      "scene_desc": "Chatty wolf on path",
+      "text": "A curious wolf asked a riddle—no one was afraid.",
+      "image_prompt_template": "Friendly wolf speaking; bright forest."
+    },
+    {
+      "page_number": 5,
+      "scene_desc": "Defense shop detour",
+      "text": "A helpful shop offered clever tools for the journey.",
+      "image_prompt_template": "Quaint shop; whimsical safe items."
+    },
+    {
+      "page_number": 6,
+      "scene_desc": "Grandma prepares",
+      "text": "Grandma smiled—plans were already in motion.",
+      "image_prompt_template": "Cozy cottage interior."
+    },
+    {
+      "page_number": 7,
+      "scene_desc": "Child answers tricks with wit",
+      "text": "{child_name} answered tricks with wit and kindness.",
+      "image_prompt_template": "Playful interaction; child confident."
+    },
+    {
+      "page_number": 8,
+      "scene_desc": "Wolf backs off",
+      "text": "The wolf blinked and padded away, quite confused.",
+      "image_prompt_template": "Forest edge; wolf leaving."
+    },
+    {
+      "page_number": 9,
+      "scene_desc": "Approach to Grandma's house",
+      "text": "Grandma's door glowed like a sunrise.",
+      "image_prompt_template": "Exterior cottage at golden hour."
+    },
+    {
+      "page_number": 10,
+      "scene_desc": "Entering, tools by door",
+      "text": "Inside, everything felt safe and bright.",
+      "image_prompt_template": "Entry interior; basket and tools by door."
+    },
+    {
+      "page_number": 11,
+      "scene_desc": "Grandma sprays wolf (playful)",
+      "text": "A friendly spritz and a giggle solved the mix-up.",
+      "image_prompt_template": "Light, comedic moment."
+    },
+    {
+      "page_number": 12,
+      "scene_desc": "Hug finale",
+      "text": "Prepared and kind—that was {child_name}'s happy ending.",
+      "image_prompt_template": "Grandma and child hug; warm backlight."
+    }
+  ]
+}
+
