@@ -51,6 +51,6 @@ services:
 databases:
   - name: mystory-db
     plan: free
-    databaseName: mystory
-    user: mystory_user
+    databaseName: my_story
+    user: my_story_user
 
