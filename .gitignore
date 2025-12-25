@@ -4,3 +4,16 @@ __pycache__/
 *.pyc
 mystory.db
 
+# Runtime and user-generated files
+logs/
+uploads/
+runtime/
+outputs/
+static/previews/
+static/thumbnails/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+

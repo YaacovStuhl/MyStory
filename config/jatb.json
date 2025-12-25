@@ -6,75 +6,74 @@
     {
       "page_number": 1,
       "scene_desc": "Cover with child as Jack",
-      "text": "{title}",
-      "image_prompt_template": "Cover portrait, satchel; distant beanstalk hint; full‑bleed; title '{title}' visible."
+      "text": "{title}\n\nA tale of courage, curiosity, and a climb into the clouds.",
+      "image_prompt_template": "storybook illustration, full-bleed cover, {child_name} as Jack holding a small satchel, faint glowing beanstalk spiraling into clouds behind him, warm golden light, painterly Disney-Ghibli style, whimsical and adventurous, title '{title}' visible"
     },
     {
       "page_number": 2,
       "scene_desc": "Trade for beans",
-      "text": "{child_name} traded a tiny trinket for twinkling beans.",
-      "image_prompt_template": "Village market; whimsical."
+      "text": "At the edge of the market, {child_name} held out a tiny trinket.\n\n\"Trust me,\" the traveler whispered, pressing sparkling beans into {child_name}'s hand.",
+      "image_prompt_template": "storybook illustration, village market at golden hour, {child_name} centered holding glowing magic beans, mysterious traveler smiling gently, bustling stalls softly blurred, warm light, sense of choice and wonder"
     },
     {
       "page_number": 3,
       "scene_desc": "Overnight growth",
-      "text": "By dawn, a beanstalk touched the sky!",
-      "image_prompt_template": "Exterior home; spiraling beanstalk."
+      "text": "By morning, the ground cracked and groaned.\n\n\"Whoa…\" gasped {child_name}, staring as a beanstalk climbed higher than the sky.",
+      "image_prompt_template": "low-angle wide shot, tiny cottage below, enormous beanstalk spiraling into misty clouds, leaves glowing softly, dawn light, epic scale, storybook illustration"
     },
     {
       "page_number": 4,
       "scene_desc": "Climb into clouds",
-      "text": "{child_name} climbed to a world of soft light.",
-      "image_prompt_template": "Sky realm; soft clouds."
+      "text": "Heart pounding, {child_name} wrapped both arms around the beanstalk.\n\n\"Up I go,\" {child_name} said, climbing into a world of clouds and sunlight.",
+      "image_prompt_template": "storybook illustration, vertical composition, {child_name} climbing thick beanstalk into luminous clouds, sky glowing pastel blues and golds, sense of bravery and wonder"
     },
     {
       "page_number": 5,
       "scene_desc": "Gentle giant",
-      "text": "A gentle giant waved from a floating garden.",
-      "image_prompt_template": "Friendly large figure; flowers."
+      "text": "A giant knelt carefully, making the ground tremble just a little.\n\n\"Hello, little climber,\" the giant said with a gentle smile.",
+      "image_prompt_template": "floating sky garden, gentle giant crouched at child’s eye level, oversized hands open and kind, flowers drifting in air, soft clouds, warm and safe mood"
     },
     {
       "page_number": 6,
       "scene_desc": "Clever puzzle",
-      "text": "With kindness, {child_name} solved a clever puzzle.",
-      "image_prompt_template": "Puzzle scene, glowing stones."
+      "text": "Between them shimmered a puzzle made of glowing stones.\n\n\"Let’s think together,\" said the giant, and {child_name} nodded.",
+      "image_prompt_template": "storybook illustration, glowing stone puzzle between child and giant, runes softly lit, thoughtful expressions, sky garden background, magical but calm"
     },
     {
       "page_number": 7,
       "scene_desc": "Playful escape",
-      "text": "Together they whooshed down the beanstalk.",
-      "image_prompt_template": "Dynamic descent; wind and laughter."
+      "text": "The puzzle clicked, and the garden began to rumble.\n\nLaughing, they whooshed down the beanstalk as the wind rushed past their ears.",
+      "image_prompt_template": "dynamic diagonal composition, {child_name} and giant sliding down beanstalk, leaves whipping past, joyful expressions, bright sky, motion and excitement"
     },
     {
       "page_number": 8,
       "scene_desc": "Sharing wonder",
-      "text": "{child_name} shared the sky's secrets with everyone.",
-      "image_prompt_template": "Village square; storytelling."
+      "text": "\"And then we slid all the way down!\" {child_name} said, waving excited arms.\n\nThe villagers leaned closer, smiling wider with every word.",
+      "image_prompt_template": "village square at sunset, {child_name} animatedly telling a story, villagers gathered close, warm glowing lanterns, sense of amazement"
     },
     {
       "page_number": 9,
       "scene_desc": "Neighbors gather",
-      "text": "Neighbors gathered, eyes wide with delight.",
-      "image_prompt_template": "Crowd scene."
+      "text": "\"A giant? In the clouds?\" someone asked.\n\n{child_name} grinned. \"The gentlest one you could ever meet.\"",
+      "image_prompt_template": "storybook illustration, cozy crowd scene, expressive faces lit by firelight, child storyteller centered"
     },
     {
       "page_number": 10,
       "scene_desc": "Cozy evening",
-      "text": "Cocoa and stories warmed the night.",
-      "image_prompt_template": "Home interior; cozy lights."
+      "text": "That night, cocoa steamed and stories grew taller.\n\n\"Best day ever,\" sighed {child_name}, curling up by the fire.",
+      "image_prompt_template": "home interior, crackling fire, mugs of cocoa, warm amber lighting, cozy storybook style"
     },
     {
       "page_number": 11,
       "scene_desc": "Thanks to the sky",
-      "text": "{child_name} thanked the sky for surprises.",
-      "image_prompt_template": "Backyard, stars."
+      "text": "{child_name} stepped outside and looked up at the stars.\n\n\"Thank you,\" {child_name} whispered to the quiet sky.",
+      "image_prompt_template": "backyard at night, star-filled sky, child gazing upward, soft moonlight, peaceful and reflective mood"
     },
     {
       "page_number": 12,
       "scene_desc": "Moral finale",
-      "text": "Curiosity grows miracles for {child_name}.",
-      "image_prompt_template": "Final pose; subtle end-card."
+      "text": "Curiosity had led {child_name} higher than ever before.\n\nAnd from that day on, being brave felt a little easier.",
+      "image_prompt_template": "final storybook illustration, {child_name} standing confidently near small beanstalk sprout, sunrise light, hopeful ending, soft glow"
     }
   ]
 }
-

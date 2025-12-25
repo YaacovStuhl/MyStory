@@ -38,12 +38,23 @@ def main():
     """Initialize database and load storylines."""
     print("Initializing database...")
     
+    # Check if database is available
+    try:
+        import database
+        if not hasattr(database, 'DB_AVAILABLE') or not database.DB_AVAILABLE:
+            print("WARNING: Database module not available - skipping initialization")
+            return
+    except ImportError:
+        print("WARNING: Database module not available - skipping initialization")
+        return
+    
     # Initialize schema
     if not database.init_database():
         print("ERROR: Failed to initialize database schema")
-        return
+        print("This might be normal if tables already exist")
+        # Continue anyway - tables might already exist
     
-    print("OK Database schema created")
+    print("OK Database schema initialized")
     
     # Load storylines from config files
     print("\nLoading storylines from config files...")

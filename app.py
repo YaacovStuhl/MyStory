@@ -1,4 +1,4 @@
-"""
+r"""
 AI Storybook Creator — Flask App (Spec‑Aligned v0.1, Online OpenAI Mode)
 -----------------------------------------------------------------------
 Implements the professor's spec:
@@ -42,6 +42,7 @@ import threading
 import base64
 import logging
 import time
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -66,7 +67,10 @@ from flask import (
     jsonify,
     session,
     redirect,
+    flash,
 )
+from flask_login import LoginManager, current_user, login_required, login_user
+from flask_socketio import SocketIO, emit
 from werkzeug.utils import secure_filename
 
 from PIL import Image, ImageDraw, ImageFont
@@ -107,10 +111,81 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24).hex())  # For session management
-# Enable DEBUG logging for image generation issues
-log_level = logging.DEBUG if os.getenv("DEBUG_IMAGE_GEN", "0") == "1" else logging.INFO
-logging.basicConfig(level=log_level, format="[%(levelname)s] %(message)s")
+
+# SECRET_KEY is critical for OAuth - must be fixed, not random
+secret_key = os.getenv("SECRET_KEY")
+if not secret_key:
+    # Generate a random one but warn the user
+    import secrets
+    secret_key = secrets.token_urlsafe(32)
+    logging.warning("[app] SECRET_KEY not set in .env - using random key (OAuth may fail on restart)")
+    logging.warning("[app] Add SECRET_KEY to .env for stable OAuth sessions")
+else:
+    logging.info("[app] SECRET_KEY loaded from .env")
+app.config["SECRET_KEY"] = secret_key
+
+# Session configuration for OAuth
+app.config["SESSION_COOKIE_SECURE"] = os.getenv("SESSION_COOKIE_SECURE", "False").lower() == "true"  # True for HTTPS only
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # Allows OAuth redirects
+app.config["PERMANENT_SESSION_LIFETIME"] = 3600  # 1 hour session lifetime
+app.config["SESSION_COOKIE_NAME"] = "mystory_session"  # Explicit session cookie name
+# CRITICAL: Set cookie domain to None so cookies work for both localhost and 127.0.0.1
+app.config["SESSION_COOKIE_DOMAIN"] = None  # None allows cookies to work for both localhost and 127.0.0.1
+
+# Configure SERVER_NAME for url_for() to work in worker threads
+# Use localhost by default for better OAuth compatibility (Google prefers localhost over 127.0.0.1)
+# NOTE: Setting SERVER_NAME can cause cookie issues - only set if needed
+server_name = os.getenv("SERVER_NAME")
+if server_name:
+    app.config["SERVER_NAME"] = server_name
+    logging.info(f"[app] SERVER_NAME set to: {server_name}")
+else:
+    # Don't set SERVER_NAME by default - let Flask auto-detect
+    # This prevents cookie domain issues
+    logging.info("[app] SERVER_NAME not set - Flask will auto-detect (recommended for OAuth)")
+# Setup comprehensive logging with file rotation and database logging
+import logger as app_logger
+import logging
+LOG_DIR = os.path.join(BASE_DIR, "logs")
+app_logger.setup_logging(log_dir=LOG_DIR, max_bytes=10 * 1024 * 1024, backup_count=5)
+# Keep standard logging module for compatibility
+
+# Initialize SocketIO for WebSocket support
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
+# Flask-Login setup
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'auth.login'
+login_manager.login_message = 'Please log in to access this page.'
+login_manager.login_message_category = 'info'
+
+# Load user for Flask-Login
+@login_manager.user_loader
+def load_user(user_id):
+    if DB_AVAILABLE:
+        try:
+            from auth_routes import load_user as auth_load_user
+            return auth_load_user(user_id)
+        except Exception as e:
+            logging.error(f"[app] Failed to load user: {e}")
+    return None
+
+# Register auth blueprint
+try:
+    from auth_routes import auth_bp, init_limiter, limiter as auth_limiter
+    app.register_blueprint(auth_bp, url_prefix='/auth')
+    init_limiter(app)
+    AUTH_AVAILABLE = True
+except ImportError as e:
+    AUTH_AVAILABLE = False
+    logging.warning(f"[app] Auth routes not available: {e}")
+    auth_limiter = None
+except Exception as e:
+    AUTH_AVAILABLE = False
+    logging.warning(f"[app] Failed to initialize auth: {e}")
+    auth_limiter = None
 
 # OAuth configuration
 try:
@@ -185,9 +260,19 @@ INDEX_HTML = r"""
       legend { color: var(--muted); padding: 0 6px; }
       .btn { display:inline-block; margin-top:18px; background: var(--accent); color:#001018; padding:12px 16px; border-radius: 9999px; font-weight:600; text-decoration:none; border:none; cursor:pointer; }
       .muted { color:var(--muted); font-size: 12px; }
-      .previews { display:grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap:10px; margin-top: 16px; }
-      .thumb { background:#0f1320; border:1px solid #2a2f3c; border-radius:8px; overflow:hidden; }
-      .thumb img { display:block; width:100%; height:auto; }
+      .previews { display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin-top: 16px; }
+      @media (max-width: 768px) { .previews { grid-template-columns: repeat(3, 1fr); } }
+      .page-thumb { background:#0f1320; border:2px solid #2a2f3c; border-radius:8px; overflow:hidden; aspect-ratio: 1; position: relative; }
+      .page-thumb.loading { border-color: var(--accent); }
+      .page-thumb.loading::before { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 30px; height: 30px; border: 3px solid #2a2f3c; border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+      .page-thumb.generated { border-color: var(--ok); }
+      .page-thumb.error { border-color: #ef4444; }
+      .page-thumb img { display:block; width:100%; height:100%; object-fit: cover; }
+      .page-thumb .page-number { position: absolute; top: 4px; left: 4px; background: rgba(0,0,0,0.7); color: var(--fg); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+      .page-thumb .error-icon { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ef4444; font-size: 24px; }
+      @keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+      .download-btn { display: none; margin-top: 20px; }
+      .download-btn.ready { display: inline-block; }
       .bar { height: 10px; background:#0b1220; border-radius: 9999px; overflow:hidden; border:1px solid #1c2841; }
       .bar > div { height:100%; width:0%; background: linear-gradient(90deg, var(--accent), #8bffd6); transition: width .3s ease; }
       .status { margin-top: 8px; color: var(--muted); font-size: 13px; }
@@ -197,6 +282,9 @@ INDEX_HTML = r"""
       .auth-btn { background: #2a2f3c; color: var(--fg); padding: 10px 16px; border-radius: 8px; text-decoration: none; border: 1px solid #3a3f4c; font-size: 14px; }
       .auth-btn:hover { background: #3a3f4c; }
       .user-info { color: var(--muted); font-size: 14px; margin-bottom: 10px; }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      #story_fieldset label { display: block; margin-bottom: 8px; cursor: pointer; }
+      #story_fieldset label:hover { color: var(--accent); }
     </style>
   </head>
   <body>
@@ -206,17 +294,24 @@ INDEX_HTML = r"""
           <h1>AI Storybook Creator</h1>
           <p class="lead">Upload a child photo, pick gender, and generate a personalized 12‑page 8.5″×8.5″ print‑ready PDF with full bleed. Story is automatically selected: Little Red Riding Hood for girls, Jack and the Beanstalk for boys.</p>
 
-          {% if session and session.get('user_id') %}
+          {% if current_user and current_user.is_authenticated %}
           <div class="auth-section">
-            <div class="user-info">Logged in as: {{ session.get('name', session.get('email', 'User')) }} | <a href="{{ url_for('dashboard') }}" style="color: var(--accent);">Dashboard</a> | <a href="{{ url_for('logout') }}" style="color: var(--muted);">Logout</a></div>
+            <div class="user-info">Logged in as: {{ current_user.name or current_user.email }} | <a href="{{ url_for('dashboard') }}" style="color: var(--accent);">Dashboard</a> | <a href="{{ url_for('auth.logout') }}" style="color: var(--muted);">Logout</a></div>
+            {% if not current_user.email_verified %}
+            <div style="margin-top: 10px; padding: 10px; background: rgba(239, 68, 68, 0.1); border-radius: 8px; color: #ef4444; font-size: 12px;">
+              ⚠ Email not verified. <a href="{{ url_for('auth.resend_verification') }}" style="color: var(--accent);">Resend verification email</a>
+            </div>
+            {% endif %}
           </div>
           {% else %}
           <div class="auth-section">
             <label>Login to save your storybooks:</label>
             <div class="auth-buttons">
-              {% if oauth and oauth.google %}<a href="{{ url_for('login_google') }}" class="auth-btn">🔵 Login with Google</a>{% endif %}
-              {% if oauth and oauth.facebook %}<a href="{{ url_for('login_facebook') }}" class="auth-btn">📘 Login with Facebook</a>{% endif %}
-              {% if oauth and oauth.apple %}<a href="{{ url_for('login_apple') }}" class="auth-btn">🍎 Sign in with Apple</a>{% endif %}
+              <a href="{{ url_for('auth.login') }}" class="auth-btn">🔐 Login</a>
+              <a href="{{ url_for('auth.register') }}" class="auth-btn">📝 Register</a>
+              {% if oauth and oauth.google %}<a href="{{ url_for('login_google') }}" class="auth-btn">🔵 Google</a>{% endif %}
+              {% if oauth and oauth.facebook %}<a href="{{ url_for('login_facebook') }}" class="auth-btn">📘 Facebook</a>{% endif %}
+              {% if oauth and oauth.apple %}<a href="{{ url_for('login_apple') }}" class="auth-btn">🍎 Apple</a>{% endif %}
             </div>
             <p class="muted" style="margin-top: 10px; font-size: 12px;">You can create storybooks without logging in, but they won't be saved to your account.</p>
           </div>
@@ -224,18 +319,31 @@ INDEX_HTML = r"""
 
           <form action="{{ url_for('create_story') }}" method="post" enctype="multipart/form-data">
             <label for="child_image">Child photo (JPG/PNG/WEBP, ≤25MB)</label>
+            {% if image_error %}
+            {{ image_error }}
+            {% endif %}
             <input type="file" name="child_image" id="child_image" accept="image/*" required />
+            <p class="muted" style="margin-top: 4px; font-size: 11px;">Please upload a clear photo with one face visible, good lighting, and appropriate content.</p>
 
             <label for="child_name">Child name</label>
-            <input type="text" name="child_name" id="child_name" placeholder="Ava" required />
+            {% if name_error %}
+            {{ name_error }}
+            {% endif %}
+            <input type="text" name="child_name" id="child_name" placeholder="Ava" value="{{ child_name_value or '' }}" required />
+            <p class="muted" style="margin-top: 4px; font-size: 11px;">Enter a real first name (2-20 letters only)</p>
 
             <fieldset>
               <legend>Gender (required)</legend>
-              <label><input type="radio" name="gender" value="female" required /> Girl (Little Red Riding Hood)</label>
-              <label><input type="radio" name="gender" value="male" /> Boy (Jack and the Beanstalk)</label>
+              <label><input type="radio" name="gender" id="gender_female" value="female" {% if gender_value == 'female' %}checked{% endif %} required onchange="updateStoryOptions()" /> Girl</label>
+              <label><input type="radio" name="gender" id="gender_male" value="male" {% if gender_value == 'male' %}checked{% endif %} onchange="updateStoryOptions()" /> Boy</label>
             </fieldset>
 
-            <button class="btn" type="submit">Generate Story</button>
+            <fieldset id="story_fieldset" style="display: none;">
+              <legend>Story (required)</legend>
+              <div id="story_options"></div>
+            </fieldset>
+
+            <button class="btn" type="submit" id="submit_btn" disabled>Generate Story</button>
             <p class="muted">Specs: 12 pages · 8.5″×8.5″ trim · 0.125″ bleed · 300 DPI · full‑bleed images.</p>
           </form>
         </div>
@@ -260,30 +368,258 @@ INDEX_HTML = r"""
               poll();
             </script>
 
-            <h3 style="margin-top:18px;">Preview (updates live)</h3>
+            <h3 style="margin-top:18px;">Pages (Real-Time Preview)</h3>
             <div class="previews" id="pv"></div>
+            <a href="#" id="downloadBtn" class="btn download-btn">Download PDF</a>
+            <a href="/" class="btn" style="margin-top: 10px; display: inline-block;">Create Another Story</a>
+            <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
             <script>
-              async function pollPreviews() {
-                try {
-                  const r = await fetch(`{{ url_for('previews_api', job_id='') }}` + jobId);
-                  const j = await r.json();
-                  const pv = document.getElementById('pv');
-                  pv.innerHTML = '';
-                  for (const url of j.previews) {
-                    const d = document.createElement('div');
-                    d.className = 'thumb';
-                    d.innerHTML = `<img src="${url}"/>`;
-                    pv.appendChild(d);
-                  }
-                  if (!j.done) setTimeout(pollPreviews, 1300);
-                } catch (e) { setTimeout(pollPreviews, 1700); }
+              const jobId = {{ job|tojson }};
+              const totalPages = 12;
+              const pages = {};
+              
+              // Initialize 12 placeholder boxes
+              const pv = document.getElementById('pv');
+              for (let i = 1; i <= totalPages; i++) {
+                const pageDiv = document.createElement('div');
+                pageDiv.className = 'page-thumb loading';
+                pageDiv.id = `page-${i}`;
+                pageDiv.innerHTML = `<div class="page-number">Page ${i}</div>`;
+                pv.appendChild(pageDiv);
+                pages[i] = { status: 'loading', url: null };
               }
-              pollPreviews();
+              
+              // WebSocket connection with polling fallback
+              let socket = null;
+              let useWebSocket = false;
+              
+              // Try to connect via WebSocket
+              try {
+                socket = io();
+                useWebSocket = true;
+                
+                socket.on('connect', () => {
+                  console.log('WebSocket connected');
+                  socket.emit('join_job', { job_id: jobId });
+                });
+                
+                socket.on('page_update', (data) => {
+                  updatePage(data.page_number, data.status, data.url, data.error);
+                });
+                
+                socket.on('progress_update', (data) => {
+                  updateProgress(data.completed, data.total, data.message);
+                });
+                
+                socket.on('job_complete', (data) => {
+                  updateProgress(data.total, data.total, 'Finished!');
+                  document.getElementById('downloadBtn').href = data.download_url;
+                  document.getElementById('downloadBtn').classList.add('ready');
+                });
+                
+                socket.on('disconnect', () => {
+                  console.log('WebSocket disconnected, falling back to polling');
+                  useWebSocket = false;
+                  startPolling();
+                });
+              } catch (e) {
+                console.log('WebSocket not available, using polling fallback');
+                useWebSocket = false;
+                startPolling();
+              }
+              
+              // Polling fallback
+              function startPolling() {
+                async function pollStatus() {
+                  try {
+                    const r = await fetch(`{{ url_for('status_api', job_id='') }}` + jobId);
+                    const j = await r.json();
+                    updateProgress(j.completed_pages, j.total_pages, j.message);
+                    if (j.done) {
+                      document.getElementById('downloadBtn').href = j.download_url;
+                      document.getElementById('downloadBtn').classList.add('ready');
+                      return;
+                    }
+                    setTimeout(pollStatus, 900);
+                  } catch (e) { setTimeout(pollStatus, 1400); }
+                }
+                
+                async function pollPreviews() {
+                  try {
+                    const r = await fetch(`{{ url_for('previews_api', job_id='') }}` + jobId);
+                    const j = await r.json();
+                    j.previews.forEach((url, idx) => {
+                      const pageNum = idx + 1;
+                      if (pages[pageNum].status !== 'generated') {
+                        updatePage(pageNum, 'generated', url, null);
+                      }
+                    });
+                    if (!j.done) setTimeout(pollPreviews, 1300);
+                  } catch (e) { setTimeout(pollPreviews, 1700); }
+                }
+                
+                pollStatus();
+                pollPreviews();
+              }
+              
+              // Update individual page
+              function updatePage(pageNum, status, url, error) {
+                const pageDiv = document.getElementById(`page-${pageNum}`);
+                if (!pageDiv) return;
+                
+                pages[pageNum] = { status, url, error };
+                pageDiv.className = `page-thumb ${status}`;
+                
+                if (status === 'generated' && url) {
+                  pageDiv.innerHTML = `<div class="page-number">Page ${pageNum}</div><img src="${url}" alt="Page ${pageNum}" />`;
+                } else if (status === 'error') {
+                  pageDiv.innerHTML = `<div class="page-number">Page ${pageNum}</div><div class="error-icon">⚠️</div>`;
+                } else {
+                  pageDiv.innerHTML = `<div class="page-number">Page ${pageNum}</div>`;
+                }
+              }
+              
+              // Update progress bar and status
+              function updateProgress(completed, total, message) {
+                const pct = Math.floor((completed / total) * 100);
+                document.getElementById('pb').style.width = pct + '%';
+                document.getElementById('st').innerHTML = message || `Page ${completed}/${total} complete`;
+              }
+              
+              // Start polling if WebSocket failed
+              if (!useWebSocket) {
+                startPolling();
+              }
             </script>
           {% else %}
+            <script>
+              // Story options by gender
+              const storyOptions = {
+                female: [{ id: 'lrrh', name: 'Little Red Riding Hood' }],
+                male: [{ id: 'jatb', name: 'Jack and the Beanstalk' }]
+              };
+              
+              function updateStoryOptions() {
+                const genderRadios = document.querySelectorAll('input[name="gender"]');
+                const storyFieldset = document.getElementById('story_fieldset');
+                const storyOptionsDiv = document.getElementById('story_options');
+                const submitBtn = document.getElementById('submit_btn');
+                
+                // Find selected gender
+                let selectedGender = null;
+                for (const radio of genderRadios) {
+                  if (radio.checked) {
+                    selectedGender = radio.value;
+                    break;
+                  }
+                }
+                
+                // If gender is selected, show story options
+                if (selectedGender) {
+                  storyFieldset.style.display = 'block';
+                  
+                  // Clear existing options
+                  storyOptionsDiv.innerHTML = '';
+                  
+                  // Get stories for selected gender
+                  const stories = storyOptions[selectedGender] || [];
+                  
+                  // Create radio buttons for each story
+                  stories.forEach(story => {
+                    const label = document.createElement('label');
+                    label.style.display = 'block';
+                    label.style.marginBottom = '8px';
+                    
+                    const radio = document.createElement('input');
+                    radio.type = 'radio';
+                    radio.name = 'story_id';
+                    radio.value = story.id;
+                    radio.id = `story_${story.id}`;
+                    radio.required = true;
+                    radio.onchange = checkFormValidity;
+                    
+                    label.appendChild(radio);
+                    label.appendChild(document.createTextNode(` ${story.name}`));
+                    storyOptionsDiv.appendChild(label);
+                  });
+                  
+                  // Reset story selection when gender changes
+                  checkFormValidity();
+                } else {
+                  storyFieldset.style.display = 'none';
+                  storyOptionsDiv.innerHTML = '';
+                  submitBtn.disabled = true;
+                }
+              }
+              
+              function checkFormValidity() {
+                const genderSelected = document.querySelector('input[name="gender"]:checked');
+                const storySelected = document.querySelector('input[name="story_id"]:checked');
+                const submitBtn = document.getElementById('submit_btn');
+                
+                if (genderSelected && storySelected) {
+                  submitBtn.disabled = false;
+                } else {
+                  submitBtn.disabled = true;
+                }
+              }
+              
+              // Initialize on page load
+              document.addEventListener('DOMContentLoaded', function() {
+                // Always reset form state when page loads
+                const genderRadios = document.querySelectorAll('input[name="gender"]');
+                const storyFieldset = document.getElementById('story_fieldset');
+                const storyOptionsDiv = document.getElementById('story_options');
+                
+                // Clear any previous selections
+                genderRadios.forEach(radio => radio.checked = false);
+                storyOptionsDiv.innerHTML = '';
+                storyFieldset.style.display = 'none';
+                
+                // Run updateStoryOptions to initialize
+                updateStoryOptions();
+                
+                // Restore story selection if there was a previous value
+                {% if story_value %}
+                const storyValue = '{{ story_value }}';
+                if (storyValue) {
+                  setTimeout(() => {
+                    const storyRadio = document.getElementById(`story_${storyValue}`);
+                    if (storyRadio) {
+                      storyRadio.checked = true;
+                      checkFormValidity();
+                    }
+                  }, 100);
+                }
+                {% endif %}
+                
+                // Restore gender selection if there was a previous value
+                {% if gender_value %}
+                const genderValue = '{{ gender_value }}';
+                if (genderValue) {
+                  const genderRadio = document.getElementById(`gender_${genderValue}`);
+                  if (genderRadio) {
+                    genderRadio.checked = true;
+                    updateStoryOptions();
+                    // Restore story selection after a short delay to ensure options are rendered
+                    {% if story_value %}
+                    setTimeout(() => {
+                      const storyValue = '{{ story_value }}';
+                      const storyRadio = document.getElementById(`story_${storyValue}`);
+                      if (storyRadio) {
+                        storyRadio.checked = true;
+                        checkFormValidity();
+                      }
+                    }, 200);
+                    {% endif %}
+                  }
+                }
+                {% endif %}
+              });
+            </script>
             <h2>Progress</h2>
             <div class="bar"><div style="width:0%"></div></div>
-            <div class="status">Submit the form to start. Messages will appear here: “Generating story outline…”, “Creating page 1 of 12…”, etc.</div>
+            <div class="status">Submit the form to start. Messages will appear here: "Generating story outline…", "Creating page 1 of 12…", etc.</div>
           {% endif %}
         </div>
       </div>
@@ -847,6 +1183,9 @@ def _generate_single_image_thread(
     page_number = page.get("page_number", page_idx + 1)
     scene = page.get("scene_description", f"Page {page_number}")
     
+    start_time = time.time()
+    prompt_used = page.get("image_prompt", "")[:200]  # Truncate for logging
+    
     try:
         logging.info(f"[thread-{page_idx}] Starting page {page_number}: {scene}")
         
@@ -860,9 +1199,26 @@ def _generate_single_image_thread(
             max_retries=3
         )
         
+        duration = time.time() - start_time
+        
         if image is None:
             error_msg = f"Failed to generate image for page {page_number} after retries"
             logging.error(f"[thread-{page_idx}] {error_msg}")
+            # Log image generation failure
+            import logger as app_logger
+            app_logger.log_image_generation(page_number, prompt_used, duration, "error", job_id, error_msg)
+            
+            # Emit WebSocket event for page error
+            try:
+                socketio.emit('page_update', {
+                    'page_number': page_number,
+                    'status': 'error',
+                    'url': None,
+                    'error': error_msg
+                }, room=job_id)
+            except Exception as e:
+                logging.warning(f"[socket] Failed to emit error update: {e}")
+            
             return (page_idx, None, error_msg)
         
         # Save preview
@@ -889,11 +1245,30 @@ def _generate_single_image_thread(
                 total = state.get("total_pages", PAGES)
                 remaining = total - state["completed_pages"]
                 if remaining > 0:
-                    state["message"] = f"Creating pages… {state['completed_pages']}/{total} complete"
+                    state["message"] = f"Page {state['completed_pages']}/{total} complete"
                 else:
                     state["message"] = "Compiling PDF…"
                 
                 _write_state(job_id, state)
+                
+                # Emit WebSocket event for page completion (with app context and SERVER_NAME)
+                try:
+                    with app.app_context():
+                        # Use relative URL or construct absolute URL manually to avoid SERVER_NAME requirement
+                        preview_url = f"/static/{preview_path}"
+                        socketio.emit('page_update', {
+                            'page_number': page_number,
+                            'status': 'generated',
+                            'url': preview_url
+                        }, room=job_id)
+                        
+                        socketio.emit('progress_update', {
+                            'completed': state["completed_pages"],
+                            'total': total,
+                            'message': state["message"]
+                        }, room=job_id)
+                except Exception as e:
+                    logging.warning(f"[socket] Failed to emit page update: {e}")
         
         logging.info(f"[thread-{page_idx}] ✓ Completed page {page_number}")
         return (page_idx, image, None)
@@ -1075,7 +1450,17 @@ def ai_generate_page_image(child_image_path: str, outline_page: Dict[str, Any], 
 # PDF assembly (Step 3)
 # -----------------------------------------------------------------------------
 
-def assemble_pdf(pages: List[Image.Image], out_path: str) -> None:
+def assemble_pdf(pages: List[Image.Image], out_path: Optional[str] = None) -> bytes:
+    """
+    Assemble PDF from page images.
+    
+    Args:
+        pages: List of PIL Images
+        out_path: Optional path to save PDF. If None, only returns bytes.
+    
+    Returns:
+        PDF data as bytes
+    """
     full_pts = int(round(FULLPAGE_IN * 72))  # 8.75 in * 72 = 630 pt
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=(full_pts, full_pts))
@@ -1086,8 +1471,14 @@ def assemble_pdf(pages: List[Image.Image], out_path: str) -> None:
         c.drawImage(ImageReader(b), 0, 0, width=full_pts, height=full_pts)
         c.showPage()
     c.save()
-    with open(out_path, "wb") as f:
-        f.write(buf.getvalue())
+    pdf_data = buf.getvalue()
+    
+    # Optionally save to file if path provided
+    if out_path:
+        with open(out_path, "wb") as f:
+            f.write(pdf_data)
+    
+    return pdf_data
 
 # -----------------------------------------------------------------------------
 # Runtime job state (progress bar + messages)
@@ -1257,40 +1648,126 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
                 final_images.append(_placeholder_render(upload_path, page))
 
     # Step 3: compile PDF
-    pdf_path = os.path.join(OUTPUT_DIR, f"storybook_{job_id}.pdf")
-    assemble_pdf(final_images, pdf_path)
-
-    # Step 4: Save book to database if available
+    pdf_data = assemble_pdf(final_images)
+    
+    # Step 4: Save book with proper naming and metadata
+    story_id = get_story_id_by_gender(gender)
+    pdf_relative_path = None
+    thumbnail_relative_path = None
+    
     if DB_AVAILABLE and user_id:
         try:
-            story_id = get_story_id_by_gender(gender)
-            # Store relative path for portability
-            pdf_relative_path = f"storybook_{job_id}.pdf"
-            book = database.create_book(user_id, story_id, child_name, pdf_relative_path)
+            # Import storage utilities
+            import storage
+            
+            # Generate filename: {user_id}_{timestamp}_{story_id}.pdf
+            timestamp = int(datetime.now(timezone.utc).timestamp())
+            pdf_filename, pdf_relative_path = storage.generate_filename(user_id, story_id)
+            
+            # Save PDF using storage system
+            if storage.STORAGE_TYPE == "local":
+                # For local storage, save to user directory
+                user_dir = storage.get_user_storage_dir(user_id)
+                pdf_full_path = os.path.join(user_dir, pdf_filename)
+                with open(pdf_full_path, "wb") as f:
+                    f.write(pdf_data)
+                logging.info(f"[worker] PDF saved to: {pdf_full_path}")
+            else:
+                # For cloud storage, use storage.save_pdf
+                storage.save_pdf(pdf_data, pdf_relative_path)
+            
+            # Generate thumbnail from first page
+            try:
+                thumb_filename, thumbnail_relative_path = storage.generate_thumbnail_path(user_id, story_id, timestamp)
+                
+                if storage.STORAGE_TYPE == "local":
+                    # Create thumbnail from first page image
+                    if final_images and len(final_images) > 0:
+                        thumbnail = final_images[0].resize((300, 300), Image.LANCZOS)
+                        thumb_full_path = os.path.join(BASE_DIR, "static", thumbnail_relative_path)
+                        os.makedirs(os.path.dirname(thumb_full_path), exist_ok=True)
+                        thumbnail.save(thumb_full_path, "JPEG", quality=85)
+                        logging.info(f"[worker] Thumbnail saved to: {thumb_full_path}")
+                    else:
+                        thumbnail_relative_path = None
+                else:
+                    # For cloud, would need to upload thumbnail
+                    if final_images and len(final_images) > 0:
+                        thumbnail = final_images[0].resize((300, 300), Image.LANCZOS)
+                        thumb_buf = io.BytesIO()
+                        thumbnail.save(thumb_buf, "JPEG", quality=85)
+                        # Would upload to cloud storage here
+                        thumbnail_relative_path = None  # Placeholder
+            except Exception as e:
+                logging.warning(f"[worker] Failed to create thumbnail: {e}")
+                thumbnail_relative_path = None
+            
+            # Save book to database with metadata
+            book = database.create_book(
+                user_id=user_id,
+                story_id=story_id,
+                child_name=child_name,
+                pdf_path=pdf_relative_path,
+                thumbnail_path=thumbnail_relative_path
+            )
+            
             if book:
                 logging.info(f"[worker] Book saved to database: book_id={book['book_id']}")
-                # Log success
-                database.create_log(user_id, "INFO", f"Book created: {child_name}'s {story_id} storybook")
+                # Store book_id and pdf_path in state for download URL generation
+                state["book_id"] = book['book_id']
+                state["pdf_path"] = pdf_relative_path  # Store path for job download route fallback
+                _write_state(job_id, state)
+                # Log book completion
+                import logger as app_logger
+                total_duration = time.time() - start_time
+                pdf_size = len(pdf_data) if 'pdf_data' in locals() else 0
+                app_logger.log_book_completed(book['book_id'], total_duration, pdf_size, user_id)
             else:
                 logging.warning(f"[worker] Failed to save book to database")
+                # Store PDF path for download even if book save failed
+                state["pdf_path"] = pdf_relative_path
+                
         except Exception as e:
-            logging.error(f"[worker] Error saving book to database: {e}")
+            logging.error(f"[worker] Error saving book: {e}")
+            import traceback
+            logging.debug(traceback.format_exc())
             if DB_AVAILABLE:
                 database.create_log(user_id, "ERROR", f"Failed to save book: {str(e)}")
     else:
+        # Save to temporary location if no user
+        temp_pdf_path = os.path.join(OUTPUT_DIR, f"storybook_{job_id}.pdf")
+        with open(temp_pdf_path, "wb") as f:
+            f.write(pdf_data)
+        pdf_relative_path = f"storybook_{job_id}.pdf"
+        
         if DB_AVAILABLE:
             database.create_log(None, "INFO", f"Book generated without user: {child_name}'s storybook (job_id={job_id})")
 
     state["done"] = True
     state["message"] = "Finished"
+    # Store PDF path for download if not using database book
+    if not (DB_AVAILABLE and user_id):
+        state["pdf_path"] = pdf_relative_path
     _write_state(job_id, state)
+    
+    # Emit WebSocket event for job completion (with app context)
+    try:
+        with app.app_context():
+            # Always use job download route - it can find the PDF via state file
+            download_url = url_for('download_pdf', job_id=job_id, _external=True)
+            socketio.emit('job_complete', {
+                'total': PAGES,
+                'download_url': download_url
+            }, room=job_id)
+    except Exception as e:
+        logging.warning(f"[socket] Failed to emit job complete: {e}")
 
 # -----------------------------------------------------------------------------
 # Routes
 # -----------------------------------------------------------------------------
 @app.route("/", methods=["GET"])
 def index():
-    return render_template_string(INDEX_HTML, title=APP_TITLE, session=session, oauth=oauth if OAUTH_AVAILABLE else None)
+    return render_template_string(INDEX_HTML, title=APP_TITLE, session=session, oauth=oauth if OAUTH_AVAILABLE else None, child_name_value="", gender_value="")
 
 
 @app.route("/create", methods=["POST"])
@@ -1303,23 +1780,68 @@ def create_story():
     if not allowed_file(file.filename):
         abort(400, "Unsupported file type")
 
-    child_name = request.form.get("child_name", "Child").strip()
+    child_name = request.form.get("child_name", "").strip()
     gender = request.form.get("gender")
+    story_id = request.form.get("story_id")
     
-    # Get user_id from session (OAuth login)
-    user_id = session.get("user_id") if session else None
+    # Get user_id from Flask-Login or session (OAuth login) - needed for logging
+    user_id = current_user.user_id if current_user.is_authenticated else (session.get("user_id") if session else None)
+    
+    # Validate child name
+    import name_validator
+    is_valid, error_message = name_validator.validate_child_name(child_name)
+    if not is_valid:
+        # Log validation failure
+        import logger as app_logger
+        app_logger.log_validation_failure("name", error_message, "", user_id)
+        # Return to form with error message
+        error_html = f"""
+        <div style="padding: 12px; background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 8px; color: #ef4444; margin-bottom: 16px;">
+          <strong>Error:</strong> {error_message}
+        </div>
+        """
+        return render_template_string(INDEX_HTML, title=APP_TITLE, name_error=error_html, child_name_value=child_name, gender_value=gender, story_value=story_id or "")
+    
+    # Sanitize the name (capitalize properly)
+    child_name = name_validator.sanitize_child_name(child_name)
 
     if gender not in {"male", "female"}:
         abort(400, "Gender required")
+    
+    # Validate story_id matches gender
+    if not story_id:
+        abort(400, "Story selection required")
+    
+    expected_story_id = get_story_id_by_gender(gender)
+    if story_id != expected_story_id:
+        abort(400, f"Story selection does not match gender. Expected {expected_story_id} for {gender}")
 
+    # Save file temporarily for validation
     uid = str(uuid.uuid4())[:8]
     safe_name = secure_filename(file.filename)
     upload_path = os.path.join(UPLOAD_DIR, f"{uid}_{safe_name}")
     file.save(upload_path)
+    
+    # Validate image
+    import image_validator
+    img_valid, img_error = image_validator.validate_image(upload_path)
+    if not img_valid:
+        # Delete the uploaded file
+        try:
+            os.remove(upload_path)
+        except:
+            pass
+        # Return to form with error message
+        error_html = f"""
+        <div style="padding: 12px; background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 8px; color: #ef4444; margin-bottom: 16px;">
+          <strong>Image Error:</strong> {img_error}
+        </div>
+        """
+        return render_template_string(INDEX_HTML, title=APP_TITLE, image_error=error_html, child_name_value=child_name, gender_value=gender, story_value=story_id or "")
 
     # Log book creation start
-    if DB_AVAILABLE:
-        database.create_log(user_id, "INFO", f"Starting storybook generation for {child_name} (gender={gender}, job_id={uid})")
+    import logger as app_logger
+    app_logger.log_book_generation_start(user_id, story_id, child_name, uid)
 
     # Kick off worker thread; UI will poll status
     # Story is automatically determined by gender (lrrh for girl, jatb for boy)
@@ -1330,6 +1852,53 @@ def create_story():
     return render_template_string(INDEX_HTML, title=APP_TITLE, job=uid)
 
 
+# WebSocket event handlers
+@socketio.on('connect')
+def handle_connect():
+    logging.info("[socket] Client connected")
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    logging.info("[socket] Client disconnected")
+
+@socketio.on('join_job')
+def handle_join_job(data):
+    """Client joins a job room to receive updates."""
+    job_id = data.get('job_id')
+    if job_id:
+        from flask_socketio import join_room
+        join_room(job_id)
+        logging.info(f"[socket] Client joined job room: {job_id}")
+        
+        # Send current state immediately
+        state = _read_state(job_id)
+        if state:
+            emit('progress_update', {
+                'completed': state.get('completed_pages', 0),
+                'total': state.get('total_pages', 12),
+                'message': state.get('message', 'Starting...')
+            })
+            
+            # Send any existing previews
+            previews = state.get('previews', [])
+            for idx, preview_path in enumerate(previews):
+                page_num = idx + 1
+                preview_url = url_for('static', filename=preview_path, _external=True)
+                emit('page_update', {
+                    'page_number': page_num,
+                    'status': 'generated',
+                    'url': preview_url
+                })
+            
+            if state.get('done'):
+                # Always use job download route - it can find the PDF via state file
+                download_url = url_for('download_pdf', job_id=job_id, _external=True)
+                emit('job_complete', {
+                    'total': state.get('total_pages', 12),
+                    'download_url': download_url
+                })
+
+
 @app.route("/status/<job_id>")
 def status_api(job_id: str):
     s = _read_state(job_id)
@@ -1337,6 +1906,7 @@ def status_api(job_id: str):
         abort(404)
     # Build the download URL here (we HAVE app/request context).
     if s.get("done"):
+        # Always use job download route - it can find the PDF via state file
         s["download_url"] = url_for("download_pdf", job_id=job_id, _external=True)
     return jsonify(s)
 
@@ -1353,13 +1923,46 @@ def previews_api(job_id: str):
     ]
     return jsonify({"previews": previews, "done": bool(s.get("done"))})
 
+# Exempt status and previews endpoints from rate limiting (polled frequently during generation)
+# This must be done after the routes are defined
+try:
+    from auth_routes import limiter
+    if limiter:
+        limiter.exempt(status_api)
+        limiter.exempt(previews_api)
+except:
+    pass
+
 
 @app.route("/download/<job_id>")
 def download_pdf(job_id: str):
+    # First check if there's a state file with PDF path
+    state = _read_state(job_id)
+    if state and state.get("pdf_path"):
+        # If PDF path is stored in state, use it
+        pdf_path = state["pdf_path"]
+        if os.path.isabs(pdf_path):
+            target = pdf_path
+        else:
+            target = os.path.join(OUTPUT_DIR, pdf_path)
+        if os.path.exists(target):
+            return send_file(target, as_attachment=True, download_name=os.path.basename(target))
+    
+    # Fallback: look for storybook_{job_id}.pdf in OUTPUT_DIR
     for fn in os.listdir(OUTPUT_DIR):
         if fn.startswith(f"storybook_{job_id}") and fn.endswith(".pdf"):
             target = os.path.join(OUTPUT_DIR, fn)
             return send_file(target, as_attachment=True, download_name=os.path.basename(target))
+    
+    # Also check user subdirectories (for logged-in users whose books weren't saved to DB)
+    for item in os.listdir(OUTPUT_DIR):
+        item_path = os.path.join(OUTPUT_DIR, item)
+        if os.path.isdir(item_path):
+            for fn in os.listdir(item_path):
+                if job_id in fn and fn.endswith(".pdf"):
+                    target = os.path.join(item_path, fn)
+                    return send_file(target, as_attachment=True, download_name=os.path.basename(target))
+    
     abort(404)
 
 
@@ -1539,9 +2142,62 @@ def handle_oauth_callback(provider_name: str):
         abort(500, "Database not available")
     
     try:
-        token = oauth.google.authorize_access_token() if provider_name == 'google' else \
-                oauth.facebook.authorize_access_token() if provider_name == 'facebook' else \
-                oauth.apple.authorize_access_token() if provider_name == 'apple' else None
+        # Get the OAuth provider
+        provider = getattr(oauth, provider_name, None)
+        if not provider:
+            abort(400, f"Unknown OAuth provider: {provider_name}")
+        
+        # Debug session state
+        logging.info(f"[oauth] Callback received for {provider_name}")
+        logging.info(f"[oauth] Session ID exists: {bool(session.get('_id'))}")
+        logging.info(f"[oauth] Session keys: {list(session.keys())}")
+        logging.info(f"[oauth] SECRET_KEY set: {bool(app.config.get('SECRET_KEY'))}")
+        
+        # Try to get access token - this validates the state parameter
+        try:
+            token = provider.authorize_access_token()
+        except Exception as state_error:
+            error_msg = str(state_error)
+            if "state" in error_msg.lower() or "csrf" in error_msg.lower():
+                logging.error(f"[oauth] CSRF state mismatch for {provider_name}: {error_msg}")
+                logging.error("[oauth] Session debug info:")
+                logging.error(f"  - Session ID: {session.get('_id', 'N/A')}")
+                logging.error(f"  - Session keys: {list(session.keys())}")
+                logging.error(f"  - SECRET_KEY set: {bool(app.config.get('SECRET_KEY'))}")
+                logging.error(f"  - SECRET_KEY length: {len(app.config.get('SECRET_KEY', ''))}")
+                logging.error("[oauth] This usually means:")
+                logging.error("  1. SECRET_KEY changed between OAuth start and callback")
+                logging.error("  2. Session cookies are not being saved")
+                logging.error("  3. Browser blocked cookies")
+                logging.error("  4. Using different browser/session")
+                logging.error("  5. App was restarted between OAuth start and callback")
+                return render_template_string("""
+                    <html>
+                    <head><title>OAuth Error</title></head>
+                    <body style="font-family: Arial; padding: 40px; max-width: 600px; margin: 0 auto;">
+                        <h2>OAuth Login Error</h2>
+                        <p><strong>CSRF State Mismatch</strong></p>
+                        <p>This usually happens when:</p>
+                        <ul>
+                            <li>Your SECRET_KEY changed (check your .env file)</li>
+                            <li>Session cookies were cleared or blocked</li>
+                            <li>You're using a different browser or incognito mode</li>
+                        </ul>
+                        <p><strong>Solution:</strong></p>
+                        <ol>
+                            <li>Make sure SECRET_KEY is set in your .env file</li>
+                            <li>Clear your browser cookies for this site</li>
+                            <li>Try logging in again</li>
+                        </ol>
+                        <p><a href="/">← Back to Home</a></p>
+                    </body>
+                    </html>
+                """), 400
+            else:
+                raise
+        
+        if not token:
+            abort(400, "Failed to get access token")
         
         if not token:
             abort(400, "Failed to get access token")
@@ -1599,12 +2255,18 @@ def handle_oauth_callback(provider_name: str):
                     abort(500, "Failed to create user")
                 database.create_log(user['user_id'], "INFO", f"New user created via {provider_name}")
         
-        # Set session
+        # Login with Flask-Login
+        from auth_routes import User
+        login_user(User(user))
+        
+        # Set session and mark as permanent
+        session.permanent = True
         session['user_id'] = user['user_id']
         session['email'] = user['email']
         session['name'] = user.get('name', name)
         session['oauth_provider'] = provider_name
         
+        logging.info(f"[oauth] Successfully logged in user: {email} via {provider_name}")
         return redirect(url_for('dashboard'))
         
     except Exception as e:
@@ -1617,8 +2279,38 @@ def login_google():
     """Initiate Google OAuth login."""
     if not OAUTH_AVAILABLE or not oauth:
         abort(500, "Google OAuth not configured")
-    redirect_uri = url_for('auth_google_callback', _external=True)
-    return oauth.google.authorize_redirect(redirect_uri)
+    
+    # Use explicit redirect URI to avoid mismatch issues
+    # Check if custom redirect URI is set, otherwise use localhost (Google's preferred format)
+    custom_redirect = os.getenv("GOOGLE_REDIRECT_URI")
+    if custom_redirect:
+        redirect_uri = custom_redirect
+    else:
+        # Default to localhost instead of 127.0.0.1 for better Google OAuth compatibility
+        base_url = os.getenv("OAUTH_BASE_URL", "http://localhost:5000")
+        redirect_uri = f"{base_url}/auth/google/callback"
+    
+    # Ensure session is properly configured before OAuth redirect
+    # This is critical for state parameter storage
+    session.permanent = True
+    # Force session to save before redirect
+    session.modified = True
+    
+    # Store a test value to verify session is working
+    session['_oauth_test'] = 'test_value'
+    
+    logging.info(f"[oauth] Initiating Google OAuth - redirect URI: {redirect_uri}")
+    logging.info(f"[oauth] Session ID: {session.get('_id', 'new')}, SECRET_KEY set: {bool(app.config.get('SECRET_KEY'))}")
+    logging.info(f"[oauth] Session cookie domain: {app.config.get('SESSION_COOKIE_DOMAIN', 'default')}")
+    logging.info(f"[oauth] Request host: {request.host}")
+    
+    try:
+        redirect_response = oauth.google.authorize_redirect(redirect_uri)
+        # Force session to be saved in the response
+        return redirect_response
+    except Exception as e:
+        logging.error(f"[oauth] Failed to initiate Google OAuth: {e}")
+        raise
 
 
 @app.route("/auth/google/callback")
@@ -1647,8 +2339,29 @@ def login_apple():
     """Initiate Apple Sign In."""
     if not OAUTH_AVAILABLE or not oauth:
         abort(500, "Apple OAuth not configured")
-    redirect_uri = url_for('auth_apple_callback', _external=True)
-    return oauth.apple.authorize_redirect(redirect_uri)
+    
+    # Use explicit redirect URI to avoid mismatch issues
+    custom_redirect = os.getenv("APPLE_REDIRECT_URI")
+    if custom_redirect:
+        redirect_uri = custom_redirect
+    else:
+        # Default to localhost for consistency
+        base_url = os.getenv("OAUTH_BASE_URL", "http://localhost:5000")
+        redirect_uri = f"{base_url}/auth/apple/callback"
+    
+    # Ensure session is properly configured before OAuth redirect
+    session.permanent = True
+    session.modified = True
+    session['_oauth_test'] = 'test_value'
+    
+    logging.info(f"[oauth] Initiating Apple Sign In - redirect URI: {redirect_uri}")
+    logging.info(f"[oauth] Session ID: {session.get('_id', 'new')}, SECRET_KEY set: {bool(app.config.get('SECRET_KEY'))}")
+    
+    try:
+        return oauth.apple.authorize_redirect(redirect_uri)
+    except Exception as e:
+        logging.error(f"[oauth] Failed to initiate Apple Sign In: {e}")
+        raise
 
 
 @app.route("/auth/apple/callback")
@@ -1657,23 +2370,11 @@ def auth_apple_callback():
     return handle_oauth_callback('apple')
 
 
-@app.route("/logout")
-def logout():
-    """Logout user and clear session."""
-    user_id = session.get('user_id')
-    if user_id and DB_AVAILABLE:
-        database.create_log(user_id, "INFO", "User logged out")
-    session.clear()
-    return redirect(url_for('index'))
-
-
 @app.route("/dashboard")
+@login_required
 def dashboard():
     """User dashboard showing their books."""
-    user_id = session.get('user_id')
-    
-    if not user_id:
-        return redirect(url_for('index'))
+    user_id = current_user.user_id
     
     if not DB_AVAILABLE:
         return "Database not available", 500
@@ -1681,11 +2382,45 @@ def dashboard():
     # Get user info
     user = database.get_user_by_id(user_id)
     if not user:
+        from flask_login import logout_user
+        logout_user()
         session.clear()
         return redirect(url_for('index'))
     
     # Get user's books
     books = database.get_user_books(user_id, limit=50)
+    
+    # Enrich books with story names
+    enriched_books = []
+    for book in books:
+        story_id = book.get("story_id")
+        story_name = "Unknown Story"
+        if story_id and DB_AVAILABLE:
+            storyline = database.get_storyline(story_id)
+            if storyline:
+                story_name = storyline.get("name", story_id.upper())
+        else:
+            # Fallback to config file
+            try:
+                story_config = load_story_config(story_id)
+                story_name = story_config.get("story_name", story_id.upper())
+            except:
+                story_name = story_id.upper() if story_id else "Unknown Story"
+        
+        # Format date
+        date_obj = book.get("generation_date") or book.get("created_at")
+        if date_obj:
+            if hasattr(date_obj, "strftime"):
+                date_str = date_obj.strftime("%Y-%m-%d %H:%M")
+            else:
+                date_str = str(date_obj)
+        else:
+            date_str = "Unknown date"
+        
+        book_copy = dict(book)
+        book_copy["story_name"] = story_name
+        book_copy["date_str"] = date_str
+        enriched_books.append(book_copy)
     
     # Dashboard HTML
     dashboard_html = f"""
@@ -1696,55 +2431,431 @@ def dashboard():
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>My Dashboard - {APP_TITLE}</title>
         <style>
-          :root {{ --bg:#0e0f12; --card:#151821; --fg:#e8ecf1; --muted:#9aa5b1; --accent:#6ee7ff; --ok:#10b981; }}
+          :root {{ --bg:#0e0f12; --card:#151821; --fg:#e8ecf1; --muted:#9aa5b1; --accent:#6ee7ff; --ok:#10b981; --danger:#ef4444; }}
           body {{ margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial; color:var(--fg); background:linear-gradient(180deg, #0e0f12, #0b1020); min-height:100vh; }}
-          .wrap {{ max-width: 1200px; margin: 40px auto; padding: 0 16px; }}
+          .wrap {{ max-width: 1400px; margin: 40px auto; padding: 0 16px; }}
           .card {{ background: var(--card); border-radius: 16px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,.35); margin-bottom: 20px; }}
           h1 {{ margin: 0 0 10px; font-size: 28px; }}
           h2 {{ margin: 0 0 20px; font-size: 20px; color: var(--muted); }}
-          .header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }}
-          .btn {{ display:inline-block; background: var(--accent); color:#001018; padding:12px 16px; border-radius: 9999px; font-weight:600; text-decoration:none; border:none; cursor:pointer; }}
+          .header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }}
+          .header-left {{ flex: 1; }}
+          .header-right {{ display: flex; gap: 10px; flex-wrap: wrap; }}
+          .view-controls {{ display: flex; gap: 8px; margin-bottom: 20px; padding: 8px; background: #0f1320; border-radius: 8px; }}
+          .view-btn {{ background: transparent; color: var(--muted); padding: 8px 16px; border-radius: 6px; border: 1px solid #2a2f3c; cursor: pointer; font-size: 14px; }}
+          .view-btn.active {{ background: var(--accent); color: #001018; border-color: var(--accent); }}
+          .view-btn:hover {{ background: #2a2f3c; }}
+          .btn {{ display:inline-block; background: var(--accent); color:#001018; padding:12px 16px; border-radius: 9999px; font-weight:600; text-decoration:none; border:none; cursor:pointer; font-size: 14px; }}
           .btn-secondary {{ background: #2a2f3c; color: var(--fg); }}
-          .books-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }}
-          .book-card {{ background: #0f1320; border: 1px solid #2a2f3c; border-radius: 12px; padding: 16px; }}
+          .btn-danger {{ background: var(--danger); color: white; }}
+          .btn-small {{ padding: 8px 12px; font-size: 12px; }}
+          .books-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }}
+          .books-list {{ display: flex; flex-direction: column; gap: 16px; }}
+          .book-card {{ background: #0f1320; border: 1px solid #2a2f3c; border-radius: 12px; padding: 16px; transition: transform 0.2s, box-shadow 0.2s; }}
+          .book-card:hover {{ transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.4); }}
+          .book-card.list-view {{ display: flex; gap: 20px; padding: 20px; }}
+          .book-card.list-view .book-thumbnail-wrapper {{ flex-shrink: 0; width: 150px; }}
+          .book-card.list-view .book-info {{ flex: 1; }}
+          .book-card.list-view .book-actions {{ display: flex; flex-direction: column; gap: 8px; justify-content: center; }}
+          .book-thumbnail-wrapper {{ position: relative; cursor: pointer; }}
+          .book-thumbnail {{ width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; margin-bottom: 12px; background: #1a1f2e; transition: opacity 0.2s; }}
+          .book-thumbnail:hover {{ opacity: 0.8; }}
+          .book-thumbnail-wrapper::after {{ content: '👁️ View'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.7); color: white; padding: 8px 12px; border-radius: 6px; opacity: 0; transition: opacity 0.2s; pointer-events: none; font-size: 12px; }}
+          .book-thumbnail-wrapper:hover::after {{ opacity: 1; }}
           .book-card h3 {{ margin: 0 0 8px; font-size: 18px; }}
           .book-card p {{ margin: 4px 0; color: var(--muted); font-size: 14px; }}
-          .empty {{ text-align: center; padding: 40px; color: var(--muted); }}
+          .book-meta {{ display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }}
+          .book-actions {{ display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }}
+          .empty {{ text-align: center; padding: 60px 20px; color: var(--muted); }}
+          .empty-icon {{ font-size: 64px; margin-bottom: 16px; }}
+          .empty h3 {{ color: var(--fg); margin-bottom: 8px; }}
+          .empty p {{ margin: 8px 0; }}
+          @media (max-width: 768px) {{
+            .book-card.list-view {{ flex-direction: column; }}
+            .book-card.list-view .book-thumbnail-wrapper {{ width: 100%; }}
+            .header {{ flex-direction: column; align-items: flex-start; }}
+            .header-right {{ width: 100%; }}
+            .header-right .btn {{ flex: 1; text-align: center; }}
+          }}
         </style>
       </head>
       <body>
         <div class="wrap">
           <div class="card">
             <div class="header">
-              <div>
+              <div class="header-left">
                 <h1>Welcome, {user.get('name', user.get('email', 'User'))}!</h1>
-                <h2>Your Storybooks</h2>
+                <h2>Your Storybooks ({len(enriched_books)})</h2>
               </div>
-              <div>
+              <div class="header-right">
                 <a href="{url_for('index')}" class="btn btn-secondary">Create New Story</a>
-                <a href="{url_for('logout')}" class="btn btn-secondary" style="margin-left: 10px;">Logout</a>
+                <a href="{url_for('admin_logs')}" class="btn btn-secondary">📊 View Logs</a>
+                <a href="{url_for('auth.logout')}" class="btn btn-secondary">Logout</a>
               </div>
             </div>
             
             {f'''
-            <div class="books-grid">
-              {''.join([f'''
-              <div class="book-card">
-                <h3>{book['child_name']}'s Storybook</h3>
-                <p>Story: {book['story_id'].upper()}</p>
-                <p>Created: {book['created_at'].strftime('%Y-%m-%d %H:%M') if hasattr(book['created_at'], 'strftime') else book['created_at']}</p>
-                <a href="{url_for('download_pdf', job_id=book['pdf_path'].replace('storybook_', '').replace('.pdf', ''))}" class="btn" style="margin-top: 12px; display: inline-block;">Download</a>
-              </div>
-              ''' for book in books])}
+            <div class="view-controls">
+              <button class="view-btn active" onclick="setView('grid')" id="btn-grid">📊 Grid View</button>
+              <button class="view-btn" onclick="setView('list')" id="btn-list">📋 List View</button>
             </div>
-            ''' if books else '<div class="empty"><p>No storybooks yet. <a href="' + url_for('index') + '">Create your first one!</a></p></div>')}
+            
+            <div class="books-grid" id="books-container">
+              ''' + ''.join([f'''
+              <div class="book-card">
+                <div class="book-thumbnail-wrapper" onclick="window.open('{url_for("view_book", book_id=book["book_id"])}', '_blank')">
+                  {f'<img src="{url_for("static", filename=book["thumbnail_path"])}" alt="Thumbnail" class="book-thumbnail" />' if book.get("thumbnail_path") else '<div class="book-thumbnail" style="display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 48px;">📖</div>'}
+                </div>
+                <h3>{book["child_name"]}\'s Storybook</h3>
+                <div class="book-meta">
+                  <p><strong>Story:</strong> {book["story_name"]}</p>
+                  <p><strong>Created:</strong> {book["date_str"]}</p>
+                </div>
+                <div class="book-actions">
+                  <a href="{url_for("view_book", book_id=book["book_id"])}" target="_blank" class="btn btn-small">👁️ View</a>
+                  <a href="{url_for("download_book", book_id=book["book_id"])}" class="btn btn-small">⬇️ Download</a>
+                  <form method="POST" action="{url_for("delete_book", book_id=book["book_id"])}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this book? This action cannot be undone.');">
+                    <button type="submit" class="btn btn-small btn-danger">🗑️ Delete</button>
+                  </form>
+                </div>
+              </div>
+              ''' for book in enriched_books]) + '''
+            </div>
+            ''' if enriched_books else f'''
+            <div class="empty">
+              <div class="empty-icon">📚</div>
+              <h3>No storybooks yet</h3>
+              <p>You haven't created any storybooks yet.</p>
+              <p><a href="{url_for('index')}" class="btn">Create your first storybook!</a></p>
+            </div>
+            '''}
+          </div>
+        </div>
+        
+        <script>
+          function setView(view) {{
+            const container = document.getElementById('books-container');
+            const btnGrid = document.getElementById('btn-grid');
+            const btnList = document.getElementById('btn-list');
+            const cards = container.querySelectorAll('.book-card');
+            
+            if (view === 'list') {{
+              container.classList.remove('books-grid');
+              container.classList.add('books-list');
+              cards.forEach(card => card.classList.add('list-view'));
+              btnGrid.classList.remove('active');
+              btnList.classList.add('active');
+              localStorage.setItem('bookView', 'list');
+            }} else {{
+              container.classList.remove('books-list');
+              container.classList.add('books-grid');
+              cards.forEach(card => card.classList.remove('list-view'));
+              btnGrid.classList.add('active');
+              btnList.classList.remove('active');
+              localStorage.setItem('bookView', 'grid');
+            }}
+          }}
+          
+          // Restore saved view preference
+          const savedView = localStorage.getItem('bookView') || 'grid';
+          if (savedView === 'list') {{
+            setView('list');
+          }}
+        </script>
+      </body>
+    </html>
+    """
+    
+    return render_template_string(dashboard_html)
+
+
+@app.route("/book/<int:book_id>/download")
+@login_required
+def download_book(book_id: int):
+    """Download a book PDF."""
+    user_id = current_user.user_id
+    
+    if not DB_AVAILABLE:
+        abort(500, "Database not available")
+    
+    # Get book from database
+    book = database.get_book(book_id)
+    if not book:
+        abort(404, "Book not found")
+    
+    # Verify book belongs to user
+    if book.get("user_id") != user_id:
+        abort(403, "Access denied")
+    
+    # Read PDF from storage
+    import storage
+    pdf_data = storage.read_pdf(book["pdf_path"])
+    
+    if not pdf_data:
+        abort(404, "PDF file not found")
+    
+    # Generate download filename
+    child_name = book.get("child_name", "Storybook")
+    story_id = book.get("story_id", "story")
+    filename = f"{child_name}_{story_id}.pdf"
+    
+    from flask import Response
+    return Response(
+        pdf_data,
+        mimetype='application/pdf',
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename}"'
+        }
+    )
+
+
+@app.route("/book/<int:book_id>/view")
+@login_required
+def view_book(book_id: int):
+    """View/preview a book PDF in browser."""
+    user_id = current_user.user_id
+    
+    if not DB_AVAILABLE:
+        abort(500, "Database not available")
+    
+    # Get book from database
+    book = database.get_book(book_id)
+    if not book:
+        abort(404, "Book not found")
+    
+    # Verify book belongs to user
+    if book.get("user_id") != user_id:
+        abort(403, "Access denied")
+    
+    # Read PDF from storage
+    import storage
+    pdf_data = storage.read_pdf(book["pdf_path"])
+    
+    if not pdf_data:
+        abort(404, "PDF file not found")
+    
+    from flask import Response
+    return Response(
+        pdf_data,
+        mimetype='application/pdf',
+        headers={
+            'Content-Disposition': 'inline'
+        }
+    )
+
+
+@app.route("/book/<int:book_id>/delete", methods=["POST"])
+@login_required
+def delete_book(book_id: int):
+    """Delete a book."""
+    user_id = current_user.user_id
+    
+    if not DB_AVAILABLE:
+        abort(500, "Database not available")
+    
+    # Get book info before deleting (for file cleanup)
+    book = database.get_book(book_id)
+    if not book:
+        abort(404, "Book not found")
+    
+    # Verify book belongs to user
+    if book.get("user_id") != user_id:
+        abort(403, "Access denied")
+    
+    # Delete book from database
+    success = database.delete_book(book_id, user_id)
+    
+    if success:
+        # Also try to delete the PDF and thumbnail files
+        import storage
+        if book.get("pdf_path"):
+            storage.delete_pdf(book["pdf_path"])
+        if book.get("thumbnail_path"):
+            # Thumbnail deletion would need similar implementation
+            pass
+        
+        flash("Book deleted successfully", "success")
+        return redirect(url_for('dashboard'))
+    else:
+        abort(404, "Book not found or access denied")
+
+
+@app.route("/admin/logs")
+@login_required
+def admin_logs():
+    """Admin page for viewing and filtering logs."""
+    # Simple admin check - in production, use proper role-based access
+    # For now, allow any logged-in user (you can add admin check later)
+    
+    if not DB_AVAILABLE:
+        return "Database not available", 500
+    
+    # Get filter parameters
+    user_id_filter = request.args.get('user_id', type=int)
+    level_filter = request.args.get('level', '')
+    start_date = request.args.get('start_date', '')
+    end_date = request.args.get('end_date', '')
+    search_term = request.args.get('search', '')
+    limit = request.args.get('limit', 100, type=int)
+    
+    # Get logs
+    logs = database.get_logs(
+        user_id=user_id_filter,
+        level=level_filter if level_filter else None,
+        limit=limit,
+        start_date=start_date if start_date else None,
+        end_date=end_date if end_date else None,
+        search_term=search_term if search_term else None
+    )
+    
+    # Get statistics
+    stats = database.get_log_statistics(
+        start_date=start_date if start_date else None,
+        end_date=end_date if end_date else None
+    )
+    
+    # Admin page HTML
+    admin_html = f"""
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Logs - {APP_TITLE}</title>
+        <style>
+          :root {{ --bg:#0e0f12; --card:#151821; --fg:#e8ecf1; --muted:#9aa5b1; --accent:#6ee7ff; --ok:#10b981; --danger:#ef4444; --warning:#f59e0b; }}
+          body {{ margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial; color:var(--fg); background:linear-gradient(180deg, #0e0f12, #0b1020); min-height:100vh; }}
+          .wrap {{ max-width: 1400px; margin: 40px auto; padding: 0 16px; }}
+          .card {{ background: var(--card); border-radius: 16px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,.35); margin-bottom: 20px; }}
+          h1 {{ margin: 0 0 10px; font-size: 28px; }}
+          h2 {{ margin: 0 0 20px; font-size: 20px; color: var(--muted); }}
+          .filters {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; padding: 16px; background: #0f1320; border-radius: 8px; }}
+          .filters input, .filters select {{ padding: 8px 12px; border-radius: 6px; border: 1px solid #2a2f3c; background: #151821; color: var(--fg); }}
+          .btn {{ display:inline-block; background: var(--accent); color:#001018; padding:8px 16px; border-radius: 6px; font-weight:600; text-decoration:none; border:none; cursor:pointer; }}
+          .btn-secondary {{ background: #2a2f3c; color: var(--fg); }}
+          .stats {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }}
+          .stat-card {{ background: #0f1320; padding: 16px; border-radius: 8px; border: 1px solid #2a2f3c; }}
+          .stat-value {{ font-size: 24px; font-weight: bold; color: var(--accent); }}
+          .stat-label {{ font-size: 12px; color: var(--muted); margin-top: 4px; }}
+          .logs-table {{ width: 100%; border-collapse: collapse; }}
+          .logs-table th, .logs-table td {{ padding: 12px; text-align: left; border-bottom: 1px solid #2a2f3c; }}
+          .logs-table th {{ background: #0f1320; color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }}
+          .logs-table td {{ font-size: 13px; }}
+          .level-INFO {{ color: var(--ok); }}
+          .level-WARNING {{ color: var(--warning); }}
+          .level-ERROR {{ color: var(--danger); }}
+          .level-DEBUG {{ color: var(--muted); }}
+          .message {{ max-width: 500px; word-wrap: break-word; }}
+        </style>
+      </head>
+      <body>
+        <div class="wrap">
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <div>
+                <h1>System Logs</h1>
+                <h2>Post-Mortem Analysis</h2>
+              </div>
+              <div>
+                <a href="{url_for('dashboard')}" class="btn btn-secondary">Back to Dashboard</a>
+              </div>
+            </div>
+            
+            <div class="stats">
+              <div class="stat-card">
+                <div class="stat-value">{stats['total_logs']}</div>
+                <div class="stat-label">Total Logs</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{stats['level_counts'].get('INFO', 0)}</div>
+                <div class="stat-label">INFO</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{stats['level_counts'].get('WARNING', 0)}</div>
+                <div class="stat-label">WARNING</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{stats['level_counts'].get('ERROR', 0)}</div>
+                <div class="stat-label">ERROR</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{stats['book_stats']['started']}</div>
+                <div class="stat-label">Books Started</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{stats['book_stats']['completed']}</div>
+                <div class="stat-label">Books Completed</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{stats['book_stats']['success_rate']}%</div>
+                <div class="stat-label">Success Rate</div>
+              </div>
+            </div>
+            
+            <form method="GET" action="{url_for('admin_logs')}">
+              <div class="filters">
+                <input type="number" name="user_id" placeholder="User ID" value="{user_id_filter or ''}" />
+                <select name="level">
+                  <option value="">All Levels</option>
+                  <option value="DEBUG" {'selected' if level_filter == 'DEBUG' else ''}>DEBUG</option>
+                  <option value="INFO" {'selected' if level_filter == 'INFO' else ''}>INFO</option>
+                  <option value="WARNING" {'selected' if level_filter == 'WARNING' else ''}>WARNING</option>
+                  <option value="ERROR" {'selected' if level_filter == 'ERROR' else ''}>ERROR</option>
+                </select>
+                <input type="date" name="start_date" value="{start_date}" />
+                <input type="date" name="end_date" value="{end_date}" />
+                <input type="text" name="search" placeholder="Search message..." value="{search_term}" />
+                <input type="number" name="limit" placeholder="Limit" value="{limit}" min="1" max="1000" />
+                <button type="submit" class="btn">Filter</button>
+                <a href="{url_for('admin_logs')}" class="btn btn-secondary">Clear</a>
+              </div>
+            </form>
+            
+            <div class="card">
+              <h3>Error Frequency (Top 10)</h3>
+              <table class="logs-table">
+                <thead>
+                  <tr>
+                    <th>Error Message</th>
+                    <th>Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {'<tr><td colspan="2">No errors found</td></tr>' if not stats['error_frequency'] else ''.join([f'<tr><td class="message">{error["message"][:200]}</td><td>{error["count"]}</td></tr>' for error in stats['error_frequency']])}
+                </tbody>
+              </table>
+            </div>
+            
+            <div class="card">
+              <h3>Recent Logs ({len(logs)} entries)</h3>
+              <table class="logs-table">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Level</th>
+                    <th>User ID</th>
+                    <th>Message</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {'<tr><td colspan="4">No logs found</td></tr>' if not logs else ''.join([f'''
+                  <tr>
+                    <td>{log['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(log.get('timestamp'), 'strftime') else log.get('timestamp')}</td>
+                    <td class="level-{log['level']}">{log['level']}</td>
+                    <td>{log.get('user_id', 'N/A')}</td>
+                    <td class="message">{log['message'][:300]}{'...' if len(log['message']) > 300 else ''}</td>
+                  </tr>
+                  ''' for log in logs])}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </body>
     </html>
     """
     
-    return render_template_string(dashboard_html)
+    return render_template_string(admin_html)
+
 
 # -----------------------------------------------------------------------------
 # requirements.txt (reference)
@@ -1758,4 +2869,11 @@ def dashboard():
 # httpx>=0.27.2
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Check if running in production (Render sets PORT environment variable)
+    port = int(os.getenv("PORT", 5000))
+    debug = os.getenv("FLASK_DEBUG", "False").lower() == "true"
+    host = "0.0.0.0" if port != 5000 else "localhost"  # Use 0.0.0.0 for Render
+    
+    # Run on localhost (not 127.0.0.1) for OAuth cookie compatibility in development
+    # Browsers treat localhost and 127.0.0.1 as different domains
+    socketio.run(app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=debug)

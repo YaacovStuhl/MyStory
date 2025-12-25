@@ -6,75 +6,74 @@
     {
       "page_number": 1,
       "scene_desc": "Cover with child as Little Red Riding Hood",
-      "text": "{title}",
-      "image_prompt_template": "Cover portrait, red hood, basket, friendly forest; full‑bleed; title '{title}' visible."
+      "text": "{title}\n\nA forest walk filled with questions, cleverness, and care.",
+      "image_prompt_template": "storybook illustration, full-bleed cover, {child_name} wearing red hood and cloak, basket in hand, friendly sunlit forest, warm painterly style, title '{title}' visible"
     },
     {
       "page_number": 2,
       "scene_desc": "Mother gives basket",
-      "text": "One day, {child_name} packed a cozy basket for Grandma.",
-      "image_prompt_template": "Warm kitchen interior; mother handing basket."
+      "text": "\"Take this to Grandma,\" said Mom, tying the basket tight.\n\n\"I will,\" promised {child_name}, standing tall.",
+      "image_prompt_template": "cozy kitchen interior, mother handing basket to child, warm sunlight through window, gentle smiles, storybook illustration"
     },
     {
       "page_number": 3,
-      "scene_desc": "Forest path, singing",
-      "text": "Birdsong and sunshine guided each careful step.",
-      "image_prompt_template": "Forest path, dappled light; child humming."
+      "scene_desc": "Forest path",
+      "text": "The forest hummed and chirped as {child_name} walked along.\n\n\"I know the way,\" {child_name} sang softly.",
+      "image_prompt_template": "storybook illustration, forest path with dappled sunlight, tall trees arching overhead, child walking confidently, birds fluttering"
     },
     {
       "page_number": 4,
-      "scene_desc": "Chatty wolf on path",
-      "text": "A curious wolf asked a riddle—no one was afraid.",
-      "image_prompt_template": "Friendly wolf speaking; bright forest."
+      "scene_desc": "Sneaky Wolf attempting to beguile her",
+      "text": "\"Where are you headed?\" asked a silky voice from behind a tree.\n\n{child_name} smiled. \"To my grandma’s house.\"",
+      "image_prompt_template": "sly-looking wolf peeking head out from behind tree, curious eyes, some menace, child alert but calm, bright forest setting"
     },
     {
       "page_number": 5,
-      "scene_desc": "Defense shop detour",
-      "text": "A helpful shop offered clever tools for the journey.",
-      "image_prompt_template": "Quaint shop; whimsical safe items."
+      "scene_desc": "Defense shop detour. {child_name} buys a mallet and anit-wolf spray",
+      "text": "\"Clever travelers plan ahead,\" said the shopkeeper with a wink.\n\n{child_name} nodded, choosing carefully.",
+      "image_prompt_template": "whimsical forest shop, shelves of important tools like anti-wolf spray and mallets, warm lantern light, child choosing thoughtfully"
     },
     {
       "page_number": 6,
-      "scene_desc": "Grandma prepares",
-      "text": "Grandma smiled—plans were already in motion.",
-      "image_prompt_template": "Cozy cottage interior."
+      "scene_desc": "{child_name} encounters the wolf again, but is wary of his intentions, scowling",
+      "text": "\"Hi-\" said the wolf but {child_name} cut him off\n\n\"I know about your kind,\" she said with a sneer.",
+      "image_prompt_template": "forest path thick with tress, wolf encountering {child_name} with a glint in his eye {child_name} looking on suspiciously, warm sunlight, wary skepticism"
     },
     {
       "page_number": 7,
-      "scene_desc": "Child answers tricks with wit",
-      "text": "{child_name} answered tricks with wit and kindness.",
-      "image_prompt_template": "Playful interaction; child confident."
+      "scene_desc": "Chasing the wolf away",
+      "text": "\"You can run but you can't hide!\" said {child_name}, chasing the wolf away.\n\n\"You'll never fool me\" she added with an evil smile.",
+      "image_prompt_template": "child chasing scared wolf, running posture, angry expression, storybook empowerment tone"
     },
     {
       "page_number": 8,
-      "scene_desc": "Wolf backs off",
-      "text": "The wolf blinked and padded away, quite confused.",
-      "image_prompt_template": "Forest edge; wolf leaving."
+      "scene_desc": "Arrving at Grandma's house",
+      "text": "{child_name} continued on to Grandma's house.\n\n unaware that the wolf had followed her",
+      "image_prompt_template": "path to Grandma's cottage, {child_name} walking away from camera towards cottage with the wolf's malevolent eyes peeking unseen from the bushes, peaceful forest cottage, sense of foreboding"
     },
     {
       "page_number": 9,
-      "scene_desc": "Approach to Grandma's house",
-      "text": "Grandma's door glowed like a sunrise.",
-      "image_prompt_template": "Exterior cottage at golden hour."
+      "scene_desc": "Grandma's house",
+      "text": "\"Grandma!\" called {child_name}, spotting the cottage.\n\nWarm light glowed from every window.",
+      "image_prompt_template": "exterior cottage at golden hour, flowers blooming, warm inviting light"
     },
     {
       "page_number": 10,
-      "scene_desc": "Entering, tools by door",
-      "text": "Inside, everything felt safe and bright.",
-      "image_prompt_template": "Entry interior; basket and tools by door."
+      "scene_desc": "Entering safely",
+      "text": "Inside, the air felt calm and cozy.\n\n\"Did you stop by the store?\" Grandma asked.",
+      "image_prompt_template": "cottage entryway, basket mallet and spray, cozy interior, gentle light"
     },
     {
       "page_number": 11,
-      "scene_desc": "Grandma sprays wolf (playful)",
-      "text": "A friendly spritz and a giggle solved the mix-up.",
-      "image_prompt_template": "Light, comedic moment."
+      "scene_desc": "Wolf is sprayewd",
+      "text": "\"AIIIII!\" yelped the wolf as He was sprayed.\n\n Feeling the effects of the spray and fearing the mallet, he retreated",
+      "image_prompt_template": "light comedic moment, wolf hopping back surprised as spray hits him, thick gray spray in air, laughter and wolf's fear"
     },
     {
       "page_number": 12,
       "scene_desc": "Hug finale",
-      "text": "Prepared and kind—that was {child_name}'s happy ending.",
-      "image_prompt_template": "Grandma and child hug; warm backlight."
+      "text": "\"You were very clever,\" Grandma said, hugging {child_name} tight.\n\nPrepared and kind—that was the best ending of all.",
+      "image_prompt_template": "grandma and child hugging, warm backlight, peaceful forest cottage, soft storybook glow"
     }
   ]
 }
-
