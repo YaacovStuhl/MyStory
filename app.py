@@ -33,6 +33,8 @@ Open http://127.0.0.1:5000
 Folders: ./uploads, ./outputs, ./static/previews, ./runtime (job state)
 """
 
+from __future__ import annotations
+
 # Monkey patch eventlet BEFORE importing any other modules (required for gunicorn with eventlet workers)
 try:
     import eventlet
@@ -40,8 +42,6 @@ try:
 except ImportError:
     # eventlet not available, continue without monkey patching
     pass
-
-from __future__ import annotations
 import io
 import os
 import json
