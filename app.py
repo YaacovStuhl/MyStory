@@ -33,6 +33,14 @@ Open http://127.0.0.1:5000
 Folders: ./uploads, ./outputs, ./static/previews, ./runtime (job state)
 """
 
+# Monkey patch eventlet BEFORE importing any other modules (required for gunicorn with eventlet workers)
+try:
+    import eventlet
+    eventlet.monkey_patch()
+except ImportError:
+    # eventlet not available, continue without monkey patching
+    pass
+
 from __future__ import annotations
 import io
 import os
@@ -152,7 +160,12 @@ app_logger.setup_logging(log_dir=LOG_DIR, max_bytes=10 * 1024 * 1024, backup_cou
 # Keep standard logging module for compatibility
 
 # Initialize SocketIO for WebSocket support
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+# Use eventlet async mode if available (for gunicorn eventlet workers), otherwise use threading
+try:
+    import eventlet
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+except ImportError:
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Flask-Login setup
 login_manager = LoginManager()
