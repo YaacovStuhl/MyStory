@@ -70,15 +70,34 @@ def get_db_config() -> Dict[str, Any]:
     if _db_config:
         return _db_config
     
+    # Check if we're in a production environment (Render, Heroku, etc.)
+    is_production = (
+        os.getenv("RENDER") is not None or  # Render.com
+        os.getenv("DYNO") is not None or    # Heroku
+        os.getenv("PORT") is not None        # Generic production indicator
+    )
+    
     db_type = detect_database_type()
     
-    # Support DATABASE_URL (connection string)
+    # Support DATABASE_URL (connection string) - preferred method
     database_url = os.getenv("DATABASE_URL")
     if database_url:
         _db_config = {"dsn": database_url, "type": db_type}
         return _db_config
     
-    # Support individual components
+    # In production, DATABASE_URL should be set
+    if is_production:
+        error_msg = (
+            "DATABASE_URL environment variable is not set. "
+            "On Render, make sure you have:\n"
+            "1. Created a PostgreSQL database service\n"
+            "2. Linked it to your web service in render.yaml or dashboard\n"
+            "3. The database service name matches 'mystory-db' in render.yaml"
+        )
+        logging.error(f"[db] {error_msg}")
+        raise ValueError(error_msg)
+    
+    # Support individual components (for local development only)
     if db_type == "postgresql":
         _db_config = {
             "host": os.getenv("DB_HOST", "localhost"),

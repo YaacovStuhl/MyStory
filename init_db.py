@@ -38,6 +38,13 @@ def main():
     """Initialize database and load storylines."""
     print("Initializing database...")
     
+    # Check if DATABASE_URL is set
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        print("WARNING: DATABASE_URL not set - skipping database initialization")
+        print("This is normal if database is not configured yet")
+        return
+    
     # Check if database is available
     try:
         import database
@@ -49,12 +56,17 @@ def main():
         return
     
     # Initialize schema
-    if not database.init_database():
-        print("ERROR: Failed to initialize database schema")
-        print("This might be normal if tables already exist")
-        # Continue anyway - tables might already exist
-    
-    print("OK Database schema initialized")
+    try:
+        if not database.init_database():
+            print("ERROR: Failed to initialize database schema")
+            print("This might be normal if tables already exist")
+            # Continue anyway - tables might already exist
+        else:
+            print("OK Database schema initialized")
+    except Exception as e:
+        print(f"WARNING: Database initialization failed: {e}")
+        print("This might be normal if database is not accessible yet")
+        return
     
     # Load storylines from config files
     print("\nLoading storylines from config files...")
