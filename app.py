@@ -35,13 +35,21 @@ Folders: ./uploads, ./outputs, ./static/previews, ./runtime (job state)
 
 from __future__ import annotations
 
+# IMPORTANT: Prevent eventlet from being imported to avoid Flask context conflicts
+# This must happen BEFORE any other imports, especially Flask-SocketIO
+import sys
+# Block eventlet import to prevent auto-detection by Flask-SocketIO
+if 'eventlet' in sys.modules:
+    del sys.modules['eventlet']
+# Create a fake eventlet module to prevent it from being imported
+class FakeEventletModule:
+    def __getattr__(self, name):
+        raise ImportError("eventlet is disabled - use gevent instead")
+sys.modules['eventlet'] = FakeEventletModule()
+
 # Monkey patch gevent BEFORE importing any other modules (required for gunicorn with gevent workers)
 # Gevent is more stable with gunicorn than eventlet
 # Only patch if gevent is available - don't use eventlet as it conflicts with Flask context
-# IMPORTANT: Prevent eventlet from being imported to avoid conflicts
-import sys
-if 'eventlet' in sys.modules:
-    del sys.modules['eventlet']
 
 try:
     import gevent
