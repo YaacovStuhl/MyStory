@@ -38,6 +38,11 @@ from __future__ import annotations
 # Monkey patch gevent BEFORE importing any other modules (required for gunicorn with gevent workers)
 # Gevent is more stable with gunicorn than eventlet
 # Only patch if gevent is available - don't use eventlet as it conflicts with Flask context
+# IMPORTANT: Prevent eventlet from being imported to avoid conflicts
+import sys
+if 'eventlet' in sys.modules:
+    del sys.modules['eventlet']
+
 try:
     import gevent
     from gevent import monkey
@@ -166,10 +171,29 @@ app_logger.setup_logging(log_dir=LOG_DIR, max_bytes=10 * 1024 * 1024, backup_cou
 # Initialize SocketIO for WebSocket support
 # Use gevent async mode if available (for gunicorn gevent workers), otherwise use threading
 # Don't use eventlet as it conflicts with Flask application context
+# Explicitly set async_mode to prevent auto-detection of eventlet
 if GEVENT_AVAILABLE:
-    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent', logger=False, engineio_logger=False)
+    socketio = SocketIO(
+        app, 
+        cors_allowed_origins="*", 
+        async_mode='gevent', 
+        logger=False, 
+        engineio_logger=False,
+        allow_upgrades=True,
+        ping_timeout=60,
+        ping_interval=25
+    )
 else:
-    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', logger=False, engineio_logger=False)
+    socketio = SocketIO(
+        app, 
+        cors_allowed_origins="*", 
+        async_mode='threading', 
+        logger=False, 
+        engineio_logger=False,
+        allow_upgrades=True,
+        ping_timeout=60,
+        ping_interval=25
+    )
 
 # Flask-Login setup
 login_manager = LoginManager()
