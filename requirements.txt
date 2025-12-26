@@ -23,4 +23,5 @@ PyJWT>=2.8.0
 cryptography>=41.0.0
 # mediapipe>=0.10.0  # Optional: Large package (~10MB). Code has OpenAI Vision API fallback for hand detection.
 gunicorn>=21.2.0
+gevent>=24.2.1
 eventlet>=0.33.3

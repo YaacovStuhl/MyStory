@@ -27,10 +27,10 @@ APP_DIR=$(dirname "$APP_PATH")
 # If app.py is in current directory
 if [ "$APP_DIR" = "." ]; then
     echo "Starting from current directory"
-    exec gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT --timeout 120 app:app
+    exec gunicorn --worker-class gevent -w 1 --bind 0.0.0.0:$PORT --timeout 120 --worker-connections 1000 app:app
 else
     # Change to directory containing app.py
     echo "Changing to directory: $APP_DIR"
     cd "$APP_DIR"
-    exec gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT --timeout 120 app:app
+    exec gunicorn --worker-class gevent -w 1 --bind 0.0.0.0:$PORT --timeout 120 --worker-connections 1000 app:app
 fi

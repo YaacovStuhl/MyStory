@@ -35,13 +35,20 @@ Folders: ./uploads, ./outputs, ./static/previews, ./runtime (job state)
 
 from __future__ import annotations
 
-# Monkey patch eventlet BEFORE importing any other modules (required for gunicorn with eventlet workers)
+# Monkey patch gevent BEFORE importing any other modules (required for gunicorn with gevent workers)
+# Gevent is more stable with gunicorn than eventlet
 try:
-    import eventlet
-    eventlet.monkey_patch()
+    import gevent
+    from gevent import monkey
+    monkey.patch_all()
 except ImportError:
-    # eventlet not available, continue without monkey patching
-    pass
+    # gevent not available, try eventlet as fallback
+    try:
+        import eventlet
+        eventlet.monkey_patch()
+    except ImportError:
+        # Neither available, continue without monkey patching
+        pass
 import io
 import os
 import json
@@ -160,12 +167,16 @@ app_logger.setup_logging(log_dir=LOG_DIR, max_bytes=10 * 1024 * 1024, backup_cou
 # Keep standard logging module for compatibility
 
 # Initialize SocketIO for WebSocket support
-# Use eventlet async mode if available (for gunicorn eventlet workers), otherwise use threading
+# Use gevent async mode if available (for gunicorn gevent workers), otherwise fallback to eventlet or threading
 try:
-    import eventlet
-    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+    import gevent
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent', logger=False, engineio_logger=False)
 except ImportError:
-    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+    try:
+        import eventlet
+        socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', logger=False, engineio_logger=False)
+    except ImportError:
+        socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', logger=False, engineio_logger=False)
 
 # Flask-Login setup
 login_manager = LoginManager()

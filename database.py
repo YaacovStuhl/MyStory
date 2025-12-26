@@ -50,7 +50,19 @@ def detect_database_type() -> str:
         _db_type = "mysql"
         return _db_type
     
-    # Check individual components
+    # Check if we're in production - if so, default to PostgreSQL (Render uses PostgreSQL)
+    is_production = (
+        os.getenv("RENDER") is not None or  # Render.com
+        os.getenv("DYNO") is not None or    # Heroku
+        os.getenv("PORT") is not None        # Generic production indicator
+    )
+    
+    if is_production:
+        # Render uses PostgreSQL by default
+        _db_type = "postgresql"
+        return _db_type
+    
+    # Check individual components (for local development only)
     db_host = os.getenv("DB_HOST", "localhost")
     db_port = int(os.getenv("DB_PORT", "3306"))
     
@@ -125,7 +137,13 @@ def get_db_config() -> Dict[str, Any]:
 @contextmanager
 def get_db_connection():
     """Get a database connection (context manager)."""
-    config = get_db_config()
+    try:
+        config = get_db_config()
+    except ValueError as e:
+        # Production environment without DATABASE_URL
+        logging.error(f"[db] {e}")
+        raise
+    
     db_type = config.get("type", detect_database_type())
     conn = None
     
