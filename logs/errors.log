@@ -1,0 +1,157 @@
+2025-12-24 19:02:32 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:02:32 [ERROR] [root] [thread-5] Failed to generate image for page 6 after retries
+2025-12-24 19:02:32 [ERROR] [image] Image generation: page=6, status=error, duration=3.35s, job_id=9c33eef3, error=Failed to generate image for page 6 after retries
+2025-12-24 19:02:33 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:02:33 [ERROR] [root] [thread-0] Failed to generate image for page 1 after retries
+2025-12-24 19:02:33 [ERROR] [image] Image generation: page=1, status=error, duration=3.91s, job_id=9c33eef3, error=Failed to generate image for page 1 after retries
+2025-12-24 19:02:33 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:02:33 [ERROR] [root] [thread-2] Failed to generate image for page 3 after retries
+2025-12-24 19:02:33 [ERROR] [image] Image generation: page=3, status=error, duration=4.20s, job_id=9c33eef3, error=Failed to generate image for page 3 after retries
+2025-12-24 19:02:33 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:02:33 [ERROR] [root] [thread-3] Failed to generate image for page 4 after retries
+2025-12-24 19:02:33 [ERROR] [image] Image generation: page=4, status=error, duration=4.27s, job_id=9c33eef3, error=Failed to generate image for page 4 after retries
+2025-12-24 19:02:34 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:02:34 [ERROR] [root] [thread-4] Failed to generate image for page 5 after retries
+2025-12-24 19:02:34 [ERROR] [image] Image generation: page=5, status=error, duration=5.17s, job_id=9c33eef3, error=Failed to generate image for page 5 after retries
+2025-12-24 19:02:36 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:02:36 [ERROR] [root] [thread-6] Failed to generate image for page 7 after retries
+2025-12-24 19:02:36 [ERROR] [image] Image generation: page=7, status=error, duration=4.18s, job_id=9c33eef3, error=Failed to generate image for page 7 after retries
+2025-12-24 19:02:37 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:02:37 [ERROR] [root] [thread-10] Failed to generate image for page 11 after retries
+2025-12-24 19:02:37 [ERROR] [image] Image generation: page=11, status=error, duration=3.28s, job_id=9c33eef3, error=Failed to generate image for page 11 after retries
+2025-12-24 19:02:40 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:02:40 [ERROR] [root] [thread-11] Failed to generate image for page 12 after retries
+2025-12-24 19:02:40 [ERROR] [image] Image generation: page=12, status=error, duration=3.34s, job_id=9c33eef3, error=Failed to generate image for page 12 after retries
+2025-12-24 19:10:33 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:10:33 [ERROR] [root] [thread-1] Failed to generate image for page 2 after retries
+2025-12-24 19:10:33 [ERROR] [image] Image generation: page=2, status=error, duration=3.31s, job_id=e91cd905, error=Failed to generate image for page 2 after retries
+2025-12-24 19:10:33 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:10:33 [ERROR] [root] [thread-0] Failed to generate image for page 1 after retries
+2025-12-24 19:10:33 [ERROR] [image] Image generation: page=1, status=error, duration=3.59s, job_id=e91cd905, error=Failed to generate image for page 1 after retries
+2025-12-24 19:10:33 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:10:33 [ERROR] [root] [thread-5] Failed to generate image for page 6 after retries
+2025-12-24 19:10:33 [ERROR] [image] Image generation: page=6, status=error, duration=3.66s, job_id=e91cd905, error=Failed to generate image for page 6 after retries
+2025-12-24 19:10:33 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:10:33 [ERROR] [root] [thread-4] Failed to generate image for page 5 after retries
+2025-12-24 19:10:33 [ERROR] [image] Image generation: page=5, status=error, duration=3.80s, job_id=e91cd905, error=Failed to generate image for page 5 after retries
+2025-12-24 19:10:33 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:10:33 [ERROR] [root] [thread-3] Failed to generate image for page 4 after retries
+2025-12-24 19:10:33 [ERROR] [image] Image generation: page=4, status=error, duration=3.87s, job_id=e91cd905, error=Failed to generate image for page 4 after retries
+2025-12-24 19:10:33 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:10:33 [ERROR] [root] [thread-2] Failed to generate image for page 3 after retries
+2025-12-24 19:10:33 [ERROR] [image] Image generation: page=3, status=error, duration=3.98s, job_id=e91cd905, error=Failed to generate image for page 3 after retries
+2025-12-24 19:10:36 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:10:36 [ERROR] [root] [thread-7] Failed to generate image for page 8 after retries
+2025-12-24 19:10:36 [ERROR] [image] Image generation: page=8, status=error, duration=3.42s, job_id=e91cd905, error=Failed to generate image for page 8 after retries
+2025-12-24 19:10:36 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:10:36 [ERROR] [root] [thread-6] Failed to generate image for page 7 after retries
+2025-12-24 19:10:36 [ERROR] [image] Image generation: page=7, status=error, duration=3.75s, job_id=e91cd905, error=Failed to generate image for page 7 after retries
+2025-12-24 19:10:36 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:10:36 [ERROR] [root] [thread-8] Failed to generate image for page 9 after retries
+2025-12-24 19:10:36 [ERROR] [image] Image generation: page=9, status=error, duration=3.41s, job_id=e91cd905, error=Failed to generate image for page 9 after retries
+2025-12-24 19:10:37 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:10:37 [ERROR] [root] [thread-9] Failed to generate image for page 10 after retries
+2025-12-24 19:10:37 [ERROR] [image] Image generation: page=10, status=error, duration=3.41s, job_id=e91cd905, error=Failed to generate image for page 10 after retries
+2025-12-24 19:10:37 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:10:37 [ERROR] [root] [thread-10] Failed to generate image for page 11 after retries
+2025-12-24 19:10:37 [ERROR] [image] Image generation: page=11, status=error, duration=3.36s, job_id=e91cd905, error=Failed to generate image for page 11 after retries
+2025-12-24 19:10:37 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:10:37 [ERROR] [root] [thread-11] Failed to generate image for page 12 after retries
+2025-12-24 19:10:37 [ERROR] [image] Image generation: page=12, status=error, duration=3.60s, job_id=e91cd905, error=Failed to generate image for page 12 after retries
+2025-12-24 19:39:25 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:39:25 [ERROR] [root] [thread-5] Failed to generate image for page 6 after retries
+2025-12-24 19:39:25 [ERROR] [image] Image generation: page=6, status=error, duration=3.64s, job_id=27413c26, error=Failed to generate image for page 6 after retries
+2025-12-24 19:39:25 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:39:25 [ERROR] [root] [thread-2] Failed to generate image for page 3 after retries
+2025-12-24 19:39:25 [ERROR] [image] Image generation: page=3, status=error, duration=4.00s, job_id=27413c26, error=Failed to generate image for page 3 after retries
+2025-12-24 19:39:25 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:39:25 [ERROR] [root] [thread-3] Failed to generate image for page 4 after retries
+2025-12-24 19:39:25 [ERROR] [image] Image generation: page=4, status=error, duration=3.78s, job_id=27413c26, error=Failed to generate image for page 4 after retries
+2025-12-24 19:39:25 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:39:25 [ERROR] [root] [thread-0] Failed to generate image for page 1 after retries
+2025-12-24 19:39:26 [ERROR] [image] Image generation: page=1, status=error, duration=4.16s, job_id=27413c26, error=Failed to generate image for page 1 after retries
+2025-12-24 19:39:26 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:39:26 [ERROR] [root] [thread-4] Failed to generate image for page 5 after retries
+2025-12-24 19:39:26 [ERROR] [image] Image generation: page=5, status=error, duration=4.26s, job_id=27413c26, error=Failed to generate image for page 5 after retries
+2025-12-24 19:39:27 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:39:27 [ERROR] [root] [thread-1] Failed to generate image for page 2 after retries
+2025-12-24 19:39:27 [ERROR] [image] Image generation: page=2, status=error, duration=5.21s, job_id=27413c26, error=Failed to generate image for page 2 after retries
+2025-12-24 19:39:29 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:39:29 [ERROR] [root] [thread-7] Failed to generate image for page 8 after retries
+2025-12-24 19:39:29 [ERROR] [image] Image generation: page=8, status=error, duration=3.25s, job_id=27413c26, error=Failed to generate image for page 8 after retries
+2025-12-24 19:39:29 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:39:29 [ERROR] [root] [thread-8] Failed to generate image for page 9 after retries
+2025-12-24 19:39:29 [ERROR] [image] Image generation: page=9, status=error, duration=3.49s, job_id=27413c26, error=Failed to generate image for page 9 after retries
+2025-12-24 19:39:29 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:39:29 [ERROR] [root] [thread-6] Failed to generate image for page 7 after retries
+2025-12-24 19:39:29 [ERROR] [image] Image generation: page=7, status=error, duration=3.63s, job_id=27413c26, error=Failed to generate image for page 7 after retries
+2025-12-24 19:39:29 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:39:29 [ERROR] [root] [thread-10] Failed to generate image for page 11 after retries
+2025-12-24 19:39:29 [ERROR] [image] Image generation: page=11, status=error, duration=3.35s, job_id=27413c26, error=Failed to generate image for page 11 after retries
+2025-12-24 19:39:30 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:39:30 [ERROR] [root] [thread-9] Failed to generate image for page 10 after retries
+2025-12-24 19:39:30 [ERROR] [image] Image generation: page=10, status=error, duration=4.13s, job_id=27413c26, error=Failed to generate image for page 10 after retries
+2025-12-24 19:39:30 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-24 19:39:30 [ERROR] [root] [thread-11] Failed to generate image for page 12 after retries
+2025-12-24 19:39:30 [ERROR] [image] Image generation: page=12, status=error, duration=3.25s, job_id=27413c26, error=Failed to generate image for page 12 after retries
+2025-12-25 11:01:43 [ERROR] [root] [oauth] Error in google callback: mismatching_state: CSRF Warning! State not equal in request and response.
+2025-12-25 11:04:06 [ERROR] [root] [oauth] CSRF state mismatch for google: mismatching_state: CSRF Warning! State not equal in request and response.
+2025-12-25 11:04:06 [ERROR] [root] [oauth] This usually means:
+2025-12-25 11:04:06 [ERROR] [root]   1. SECRET_KEY changed between OAuth start and callback
+2025-12-25 11:04:06 [ERROR] [root]   2. Session cookies are not being saved
+2025-12-25 11:04:06 [ERROR] [root]   3. Browser blocked cookies
+2025-12-25 11:04:06 [ERROR] [root]   4. Using different browser/session
+2025-12-25 11:04:26 [ERROR] [root] [oauth] CSRF state mismatch for google: mismatching_state: CSRF Warning! State not equal in request and response.
+2025-12-25 11:04:26 [ERROR] [root] [oauth] This usually means:
+2025-12-25 11:04:26 [ERROR] [root]   1. SECRET_KEY changed between OAuth start and callback
+2025-12-25 11:04:26 [ERROR] [root]   2. Session cookies are not being saved
+2025-12-25 11:04:26 [ERROR] [root]   3. Browser blocked cookies
+2025-12-25 11:04:26 [ERROR] [root]   4. Using different browser/session
+2025-12-25 11:06:19 [ERROR] [root] [oauth] CSRF state mismatch for google: mismatching_state: CSRF Warning! State not equal in request and response.
+2025-12-25 11:06:19 [ERROR] [root] [oauth] This usually means:
+2025-12-25 11:06:19 [ERROR] [root]   1. SECRET_KEY changed between OAuth start and callback
+2025-12-25 11:06:19 [ERROR] [root]   2. Session cookies are not being saved
+2025-12-25 11:06:19 [ERROR] [root]   3. Browser blocked cookies
+2025-12-25 11:06:19 [ERROR] [root]   4. Using different browser/session
+2025-12-25 11:07:04 [ERROR] [root] [oauth] CSRF state mismatch for google: mismatching_state: CSRF Warning! State not equal in request and response.
+2025-12-25 11:07:04 [ERROR] [root] [oauth] This usually means:
+2025-12-25 11:07:04 [ERROR] [root]   1. SECRET_KEY changed between OAuth start and callback
+2025-12-25 11:07:04 [ERROR] [root]   2. Session cookies are not being saved
+2025-12-25 11:07:04 [ERROR] [root]   3. Browser blocked cookies
+2025-12-25 11:07:04 [ERROR] [root]   4. Using different browser/session
+2025-12-25 11:10:11 [ERROR] [root] [oauth] CSRF state mismatch for google: mismatching_state: CSRF Warning! State not equal in request and response.
+2025-12-25 11:10:11 [ERROR] [root] [oauth] Session debug info:
+2025-12-25 11:10:11 [ERROR] [root]   - Session ID: N/A
+2025-12-25 11:10:11 [ERROR] [root]   - Session keys: []
+2025-12-25 11:10:11 [ERROR] [root]   - SECRET_KEY set: True
+2025-12-25 11:10:11 [ERROR] [root]   - SECRET_KEY length: 43
+2025-12-25 11:10:11 [ERROR] [root] [oauth] This usually means:
+2025-12-25 11:10:11 [ERROR] [root]   1. SECRET_KEY changed between OAuth start and callback
+2025-12-25 11:10:11 [ERROR] [root]   2. Session cookies are not being saved
+2025-12-25 11:10:11 [ERROR] [root]   3. Browser blocked cookies
+2025-12-25 11:10:11 [ERROR] [root]   4. Using different browser/session
+2025-12-25 11:10:11 [ERROR] [root]   5. App was restarted between OAuth start and callback
+2025-12-25 16:06:14 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-25 16:06:14 [ERROR] [root] [thread-0] Failed to generate image for page 1 after retries
+2025-12-25 16:06:14 [ERROR] [image] Image generation: page=1, status=error, duration=3.46s, job_id=75481310, error=Failed to generate image for page 1 after retries
+2025-12-25 16:06:14 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-25 16:06:14 [ERROR] [root] [thread-2] Failed to generate image for page 3 after retries
+2025-12-25 16:06:14 [ERROR] [image] Image generation: page=3, status=error, duration=3.55s, job_id=75481310, error=Failed to generate image for page 3 after retries
+2025-12-25 16:06:14 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-25 16:06:14 [ERROR] [root] [thread-1] Failed to generate image for page 2 after retries
+2025-12-25 16:06:14 [ERROR] [image] Image generation: page=2, status=error, duration=3.60s, job_id=75481310, error=Failed to generate image for page 2 after retries
+2025-12-25 16:06:14 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-25 16:06:14 [ERROR] [root] [thread-4] Failed to generate image for page 5 after retries
+2025-12-25 16:06:14 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-25 16:06:14 [ERROR] [image] Image generation: page=5, status=error, duration=3.63s, job_id=75481310, error=Failed to generate image for page 5 after retries
+2025-12-25 16:06:14 [ERROR] [root] [thread-5] Failed to generate image for page 6 after retries
+2025-12-25 16:06:14 [ERROR] [image] Image generation: page=6, status=error, duration=3.66s, job_id=75481310, error=Failed to generate image for page 6 after retries
+2025-12-25 16:06:17 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-25 16:06:17 [ERROR] [root] [thread-7] Failed to generate image for page 8 after retries
+2025-12-25 16:06:17 [ERROR] [image] Image generation: page=8, status=error, duration=3.38s, job_id=75481310, error=Failed to generate image for page 8 after retries
+2025-12-25 16:06:18 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-25 16:06:18 [ERROR] [root] [thread-8] Failed to generate image for page 9 after retries
+2025-12-25 16:06:18 [ERROR] [image] Image generation: page=9, status=error, duration=3.73s, job_id=75481310, error=Failed to generate image for page 9 after retries
+2025-12-25 16:06:21 [ERROR] [root] [image] ✗ Failed after 3 attempts: BadRequestError - Error code: 400 - {'error': {'message': 'Billing hard limit has been reached.', 'type': 'billing_limit_user_error', 'param': None, 'code': 'billing_hard_limit_reached'}}
+2025-12-25 16:06:21 [ERROR] [root] [thread-11] Failed to generate image for page 12 after retries
+2025-12-25 16:06:21 [ERROR] [image] Image generation: page=12, status=error, duration=3.33s, job_id=75481310, error=Failed to generate image for page 12 after retries
