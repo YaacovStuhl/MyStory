@@ -53,4 +53,3 @@ databases:
     plan: free
     databaseName: my_story
     user: my_story_user
-

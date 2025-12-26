@@ -33,5 +33,7 @@ else
     pip install -r requirements.txt
 fi
 
-echo "Build complete!"
+echo "Initializing database..."
+python init_db.py || echo "Database initialization failed or already initialized"
 
+echo "Build complete!"
