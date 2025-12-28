@@ -38,21 +38,26 @@ fi
 # If app.py is in current directory
 if [ "$APP_DIR" = "." ]; then
     echo "Starting from current directory with $WORKER_CLASS workers"
-    # Avoid re-running DB initialization on every restart.
-    DB_INIT_MARKER="${DB_INIT_MARKER:-.db_initialized}"
-    if [ -n "$DATABASE_URL" ]; then
-        if [ "${FORCE_DB_INIT:-false}" = "true" ] || [ ! -f "$DB_INIT_MARKER" ]; then
-            echo "Initializing database at runtime (one-time)..."
-            if python init_db.py; then
-                touch "$DB_INIT_MARKER" || true
+    # IMPORTANT: Render may run the start command multiple times (deploy/health/instance restarts).
+    # Default to NOT running DB initialization on startup; you can opt-in temporarily.
+    if [ "${RUN_DB_INIT_ON_START:-false}" = "true" ]; then
+        DB_INIT_MARKER="${DB_INIT_MARKER:-.db_initialized}"
+        if [ -n "$DATABASE_URL" ]; then
+            if [ "${FORCE_DB_INIT:-false}" = "true" ] || [ ! -f "$DB_INIT_MARKER" ]; then
+                echo "Initializing database at runtime (one-time)..."
+                if python init_db.py; then
+                    touch "$DB_INIT_MARKER" || true
+                else
+                    echo "Database initialization failed (continuing)"
+                fi
             else
-                echo "Database initialization failed (continuing)"
+                echo "Database already initialized (marker found), skipping"
             fi
         else
-            echo "Database already initialized (marker found), skipping"
+            echo "DATABASE_URL not set, skipping database initialization"
         fi
     else
-        echo "DATABASE_URL not set, skipping database initialization"
+        echo "RUN_DB_INIT_ON_START is false; skipping database initialization"
     fi
     exec gunicorn --worker-class $WORKER_CLASS -w 1 --bind 0.0.0.0:$PORT --timeout 300 $WORKER_ARGS app:app
 else
@@ -60,21 +65,26 @@ else
     echo "Changing to directory: $APP_DIR"
     echo "Starting with $WORKER_CLASS workers"
     cd "$APP_DIR"
-    # Avoid re-running DB initialization on every restart.
-    DB_INIT_MARKER="${DB_INIT_MARKER:-.db_initialized}"
-    if [ -n "$DATABASE_URL" ]; then
-        if [ "${FORCE_DB_INIT:-false}" = "true" ] || [ ! -f "$DB_INIT_MARKER" ]; then
-            echo "Initializing database at runtime (one-time)..."
-            if python init_db.py; then
-                touch "$DB_INIT_MARKER" || true
+    # IMPORTANT: Render may run the start command multiple times (deploy/health/instance restarts).
+    # Default to NOT running DB initialization on startup; you can opt-in temporarily.
+    if [ "${RUN_DB_INIT_ON_START:-false}" = "true" ]; then
+        DB_INIT_MARKER="${DB_INIT_MARKER:-.db_initialized}"
+        if [ -n "$DATABASE_URL" ]; then
+            if [ "${FORCE_DB_INIT:-false}" = "true" ] || [ ! -f "$DB_INIT_MARKER" ]; then
+                echo "Initializing database at runtime (one-time)..."
+                if python init_db.py; then
+                    touch "$DB_INIT_MARKER" || true
+                else
+                    echo "Database initialization failed (continuing)"
+                fi
             else
-                echo "Database initialization failed (continuing)"
+                echo "Database already initialized (marker found), skipping"
             fi
         else
-            echo "Database already initialized (marker found), skipping"
+            echo "DATABASE_URL not set, skipping database initialization"
         fi
     else
-        echo "DATABASE_URL not set, skipping database initialization"
+        echo "RUN_DB_INIT_ON_START is false; skipping database initialization"
     fi
     exec gunicorn --worker-class $WORKER_CLASS -w 1 --bind 0.0.0.0:$PORT --timeout 300 $WORKER_ARGS app:app
 fi

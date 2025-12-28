@@ -1598,7 +1598,9 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
         _write_state(job_id, state)
 
         # Step 2: Generate all images in parallel with ThreadPoolExecutor
-        max_workers = min(12, int(os.getenv("MAX_IMAGE_WORKERS", "6")))  # Default 6 concurrent, max 12
+        # Render free instances are memory-constrained; default to lower concurrency there to avoid restarts.
+        default_workers = "2" if os.getenv("RENDER") else "6"
+        max_workers = min(12, int(os.getenv("MAX_IMAGE_WORKERS", default_workers)))  # max 12
         timeout_seconds = int(os.getenv("IMAGE_GEN_TIMEOUT_SECONDS", "600"))  # default 10 minutes
         
         # Prepare page data with indices
