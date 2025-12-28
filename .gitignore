@@ -13,6 +13,9 @@ static/previews/
 static/thumbnails/
 *.log
 
+# Duplicate nested repo directory (was previously tracked as a broken submodule)
+MyStory/
+
 # OS files
 .DS_Store
 Thumbs.db
