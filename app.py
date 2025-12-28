@@ -38,6 +38,7 @@ from __future__ import annotations
 # IMPORTANT: Prevent eventlet from being imported to avoid Flask context conflicts
 # This must happen BEFORE any other imports, especially Flask-SocketIO
 import sys
+import os
 # Block eventlet import to prevent auto-detection by Flask-SocketIO
 if 'eventlet' in sys.modules:
     del sys.modules['eventlet']
@@ -47,20 +48,21 @@ class FakeEventletModule:
         raise ImportError("eventlet is disabled - use gevent instead")
 sys.modules['eventlet'] = FakeEventletModule()
 
-# Monkey patch gevent BEFORE importing any other modules (required for gunicorn with gevent workers)
-# Gevent is more stable with gunicorn than eventlet
-# Only patch if gevent is available - don't use eventlet as it conflicts with Flask context
-
+# IMPORTANT: Do NOT monkey-patch by default.
+# On some runtimes (notably Python 3.13), gevent monkey-patching can cause instability.
+# If you *explicitly* want gevent, set USE_GEVENT=true (and run gunicorn with gevent worker).
+USE_GEVENT = os.getenv("USE_GEVENT", "false").lower() == "true"
 try:
-    import gevent
-    from gevent import monkey
-    monkey.patch_all()
-    GEVENT_AVAILABLE = True
+    if USE_GEVENT:
+        import gevent  # noqa: F401
+        from gevent import monkey
+        monkey.patch_all()
+        GEVENT_AVAILABLE = True
+    else:
+        GEVENT_AVAILABLE = False
 except ImportError:
-    # gevent not available - don't monkey patch, will use threading mode
     GEVENT_AVAILABLE = False
 import io
-import os
 import json
 import uuid
 import threading
@@ -137,6 +139,13 @@ load_dotenv()
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
 
+# Respect reverse proxy headers on Render (and similar platforms) so OAuth + cookies work.
+try:
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+except Exception as e:
+    logging.warning(f"[app] ProxyFix not applied: {e}")
+
 # SECRET_KEY is critical for OAuth - must be fixed, not random
 secret_key = os.getenv("SECRET_KEY")
 if not secret_key:
@@ -150,7 +159,13 @@ else:
 app.config["SECRET_KEY"] = secret_key
 
 # Session configuration for OAuth
-app.config["SESSION_COOKIE_SECURE"] = os.getenv("SESSION_COOKIE_SECURE", "False").lower() == "true"  # True for HTTPS only
+# If APP_URL/RENDER_EXTERNAL_URL is https, force secure cookies (Render is always HTTPS externally).
+external_url = os.getenv("APP_URL") or os.getenv("RENDER_EXTERNAL_URL") or ""
+is_https_external = external_url.startswith("https://")
+app.config["PREFERRED_URL_SCHEME"] = "https" if is_https_external else "http"
+app.config["SESSION_COOKIE_SECURE"] = (
+    os.getenv("SESSION_COOKIE_SECURE", "true" if is_https_external else "False").lower() == "true"
+)  # True for HTTPS only
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # Allows OAuth redirects
 app.config["PERMANENT_SESSION_LIFETIME"] = 3600  # 1 hour session lifetime
@@ -176,32 +191,24 @@ LOG_DIR = os.path.join(BASE_DIR, "logs")
 app_logger.setup_logging(log_dir=LOG_DIR, max_bytes=10 * 1024 * 1024, backup_count=5)
 # Keep standard logging module for compatibility
 
-# Initialize SocketIO for WebSocket support
-# Use gevent async mode if available (for gunicorn gevent workers), otherwise use threading
-# Don't use eventlet as it conflicts with Flask application context
-# Explicitly set async_mode to prevent auto-detection of eventlet
-if GEVENT_AVAILABLE:
-    socketio = SocketIO(
-        app, 
-        cors_allowed_origins="*", 
-        async_mode='gevent', 
-        logger=False, 
-        engineio_logger=False,
-        allow_upgrades=True,
-        ping_timeout=60,
-        ping_interval=25
-    )
+# Initialize SocketIO for WebSocket support.
+# Default to threading (works with gunicorn gthread). Opt into gevent via USE_GEVENT=true.
+socketio_async_mode = os.getenv("SOCKETIO_ASYNC_MODE")
+if socketio_async_mode:
+    chosen_async_mode = socketio_async_mode
 else:
-    socketio = SocketIO(
-        app, 
-        cors_allowed_origins="*", 
-        async_mode='threading', 
-        logger=False, 
-        engineio_logger=False,
-        allow_upgrades=True,
-        ping_timeout=60,
-        ping_interval=25
-    )
+    chosen_async_mode = "gevent" if GEVENT_AVAILABLE else "threading"
+
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode=chosen_async_mode,
+    logger=False,
+    engineio_logger=False,
+    allow_upgrades=True,
+    ping_timeout=60,
+    ping_interval=25,
+)
 
 # Flask-Login setup
 login_manager = LoginManager()
@@ -408,6 +415,11 @@ INDEX_HTML = r"""
                 try {
                   const r = await fetch(`{{ url_for('status_api', job_id='') }}` + jobId);
                   const j = await r.json();
+                  if (!r.ok) {
+                    document.getElementById('pb').style.width = '100%';
+                    document.getElementById('st').textContent = j.message || 'Job not found (server restart). Please start again.';
+                    return;
+                  }
                   const pct = Math.floor((j.completed_pages / j.total_pages) * 100);
                   document.getElementById('pb').style.width = pct + '%';
                   document.getElementById('st').innerHTML = j.done ? `Finished. <a class="ok" href="${j.download_url}">Download Your Book</a>` : j.message;
@@ -483,6 +495,10 @@ INDEX_HTML = r"""
                   try {
                     const r = await fetch(`{{ url_for('status_api', job_id='') }}` + jobId);
                     const j = await r.json();
+                    if (!r.ok) {
+                      updateProgress(totalPages, totalPages, j.message || 'Job not found (server restart). Please start again.');
+                      return;
+                    }
                     updateProgress(j.completed_pages, j.total_pages, j.message);
                     if (j.done) {
                       document.getElementById('downloadBtn').href = j.download_url;
@@ -1561,101 +1577,129 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
         "total_pages": PAGES,
         "done": False,
         "previews": [],
+        "error": None,
     }
     _write_state(job_id, state)
 
-    # Step 1: story outline (JSON) - loaded from vetted config files
-    outline = ai_generate_story_outline(child_name, gender)
-    
-    # Step 1.5: Analyze child's image once for consistent character generation
-    state["message"] = "Analyzing child's appearance…"
-    _write_state(job_id, state)
-    child_description = _analyze_child_image(upload_path)
-    
-    state["message"] = "Creating all pages in parallel…"
-    _write_state(job_id, state)
+    try:
+        # Step 1: story outline (JSON) - loaded from vetted config files
+        outline = ai_generate_story_outline(child_name, gender)
+        
+        # Step 1.5: Analyze child's image once for consistent character generation
+        state["message"] = "Analyzing child's appearance…"
+        _write_state(job_id, state)
+        child_description = _analyze_child_image(upload_path)
+        
+        state["message"] = "Creating all pages in parallel…"
+        _write_state(job_id, state)
 
-    # Step 2: Generate all images in parallel with ThreadPoolExecutor
-    # Target: Complete in under 2 minutes
-    max_workers = min(12, int(os.getenv("MAX_IMAGE_WORKERS", "6")))  # Default 6 concurrent, max 12
-    timeout_seconds = 120  # 2 minutes total timeout
-    
-    images: List[Optional[Image.Image]] = [None] * PAGES
-    state_lock = threading.Lock()
-    
-    # Prepare page data with indices
-    page_data_list = [(idx, page) for idx, page in enumerate(outline["pages"])]
-    
-    start_time = time.time()
-    logging.info(f"[worker] Starting parallel image generation with {max_workers} workers, timeout={timeout_seconds}s")
-    
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all tasks
-        future_to_page = {
-            executor.submit(
-                _generate_single_image_thread,
-                page_data,
-                upload_path,
-                child_name,
-                gender,
-                child_description,
-                job_id,
-                state_lock
-            ): page_data[0]
-            for page_data in page_data_list
-        }
+        # Step 2: Generate all images in parallel with ThreadPoolExecutor
+        max_workers = min(12, int(os.getenv("MAX_IMAGE_WORKERS", "6")))  # Default 6 concurrent, max 12
+        timeout_seconds = int(os.getenv("IMAGE_GEN_TIMEOUT_SECONDS", "600"))  # default 10 minutes
         
-        # Process completed tasks as they finish
-        completed_count = 0
-        failed_count = 0
+        images: List[Optional[Image.Image]] = [None] * PAGES
+        state_lock = threading.Lock()
         
-        for future in as_completed(future_to_page, timeout=timeout_seconds):
-            page_idx = future_to_page[future]
+        # Prepare page data with indices
+        page_data_list = [(idx, page) for idx, page in enumerate(outline["pages"])]
+        
+        start_time = time.time()
+        logging.info(f"[worker] Starting parallel image generation with {max_workers} workers, timeout={timeout_seconds}s")
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_page = {
+                executor.submit(
+                    _generate_single_image_thread,
+                    page_data,
+                    upload_path,
+                    child_name,
+                    gender,
+                    child_description,
+                    job_id,
+                    state_lock
+                ): page_data[0]
+                for page_data in page_data_list
+            }
+            
+            completed_count = 0
+            failed_count = 0
             try:
-                idx, image, error_msg = future.result(timeout=1)
-                
-                if image is not None:
-                    images[idx] = image
-                    completed_count += 1
-                    logging.info(f"[worker] Page {idx + 1} completed ({completed_count}/{PAGES})")
-                else:
-                    # Generate placeholder for failed image
-                    logging.warning(f"[worker] Page {idx + 1} failed, using placeholder: {error_msg}")
-                    page = outline["pages"][idx]
-                    placeholder = _placeholder_render(upload_path, page)
-                    images[idx] = placeholder
-                    
-                    # Save placeholder preview
-                    page_number = page.get("page_number", idx + 1)
-                    fn = f"{job_id}_p{page_number:02d}.jpg"
-                    outp = os.path.join(PREVIEW_DIR, fn)
-                    placeholder.save(outp, "JPEG", quality=88)
-                    
-                    # Update state
-                    with state_lock:
-                        state = _read_state(job_id)
-                        if state:
-                            state["completed_pages"] = state.get("completed_pages", 0) + 1
-                            previews = state.get("previews", [])
-                            preview_path = f"previews/{fn}"
-                            if preview_path not in previews:
-                                previews.append(preview_path)
-                            state["previews"] = previews
-                            state["message"] = f"Creating pages… {state['completed_pages']}/{PAGES} complete"
-                            _write_state(job_id, state)
-                    
-                    failed_count += 1
-                    
+                for future in as_completed(future_to_page, timeout=timeout_seconds):
+                    page_idx = future_to_page[future]
+                    try:
+                        idx, image, error_msg = future.result(timeout=1)
+                        
+                        if image is not None:
+                            images[idx] = image
+                            completed_count += 1
+                            logging.info(f"[worker] Page {idx + 1} completed ({completed_count}/{PAGES})")
+                        else:
+                            # Generate placeholder for failed image
+                            logging.warning(f"[worker] Page {idx + 1} failed, using placeholder: {error_msg}")
+                            page = outline["pages"][idx]
+                            placeholder = _placeholder_render(upload_path, page)
+                            images[idx] = placeholder
+                            
+                            # Save placeholder preview
+                            page_number = page.get("page_number", idx + 1)
+                            fn = f"{job_id}_p{page_number:02d}.jpg"
+                            outp = os.path.join(PREVIEW_DIR, fn)
+                            placeholder.save(outp, "JPEG", quality=88)
+                            
+                            # Update state
+                            with state_lock:
+                                state = _read_state(job_id)
+                                if state:
+                                    state["completed_pages"] = state.get("completed_pages", 0) + 1
+                                    previews = state.get("previews", [])
+                                    preview_path = f"previews/{fn}"
+                                    if preview_path not in previews:
+                                        previews.append(preview_path)
+                                    state["previews"] = previews
+                                    state["message"] = f"Creating pages… {state['completed_pages']}/{PAGES} complete"
+                                    _write_state(job_id, state)
+                            
+                            failed_count += 1
+                            
+                    except Exception as e:
+                        logging.error(f"[worker] Exception processing page {page_idx + 1}: {e}")
+                        # Use placeholder for this page
+                        page = outline["pages"][page_idx]
+                        placeholder = _placeholder_render(upload_path, page)
+                        images[page_idx] = placeholder
+                        failed_count += 1
             except Exception as e:
-                logging.error(f"[worker] Exception processing page {page_idx + 1}: {e}")
-                # Use placeholder for this page
-                page = outline["pages"][page_idx]
+                # TimeoutError from as_completed or other unexpected executor error
+                logging.error(f"[worker] Parallel generation did not finish cleanly: {e}")
+            
+            # Fill any remaining pages with placeholders so we can always complete a PDF.
+            for idx, im in enumerate(images):
+                if im is not None:
+                    continue
+                page = outline["pages"][idx]
                 placeholder = _placeholder_render(upload_path, page)
-                images[page_idx] = placeholder
-                failed_count += 1
-        
-        elapsed = time.time() - start_time
-        logging.info(f"[worker] Parallel generation completed in {elapsed:.1f}s ({completed_count} succeeded, {failed_count} failed)")
+                images[idx] = placeholder
+                
+                page_number = page.get("page_number", idx + 1)
+                fn = f"{job_id}_p{page_number:02d}.jpg"
+                outp = os.path.join(PREVIEW_DIR, fn)
+                placeholder.save(outp, "JPEG", quality=88)
+                
+                with state_lock:
+                    state = _read_state(job_id)
+                    if state:
+                        state["completed_pages"] = state.get("completed_pages", 0) + 1
+                        previews = state.get("previews", [])
+                        preview_path = f"previews/{fn}"
+                        if preview_path not in previews:
+                            previews.append(preview_path)
+                        state["previews"] = previews
+                        state["message"] = f"Creating pages… {state['completed_pages']}/{PAGES} complete"
+                        _write_state(job_id, state)
+            
+            elapsed = time.time() - start_time
+            logging.info(f"[worker] Parallel generation finished in {elapsed:.1f}s ({completed_count} succeeded, {failed_count} failed/placeholder)")
     
     # Ensure all images are present (fill any missing with placeholders)
     for idx, img in enumerate(images):
@@ -1792,15 +1836,15 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
         if DB_AVAILABLE:
             database.create_log(None, "INFO", f"Book generated without user: {child_name}'s storybook (job_id={job_id})")
 
-    state["done"] = True
+        state["done"] = True
     state["message"] = "Finished"
     # Store PDF path for download if not using database book
     if not (DB_AVAILABLE and user_id):
         state["pdf_path"] = pdf_relative_path
-    _write_state(job_id, state)
+        _write_state(job_id, state)
     
     # Emit WebSocket event for job completion (with app context)
-    try:
+        try:
         with app.app_context():
             # Always use job download route - it can find the PDF via state file
             download_url = url_for('download_pdf', job_id=job_id, _external=True)
@@ -1808,8 +1852,16 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
                 'total': PAGES,
                 'download_url': download_url
             }, room=job_id)
-    except Exception as e:
+        except Exception as e:
         logging.warning(f"[socket] Failed to emit job complete: {e}")
+    except Exception as e:
+        # Ensure the UI never spins forever on errors
+        logging.error(f"[worker] Fatal error generating book (job_id={job_id}): {e}")
+        state = _read_state(job_id) or {"job_id": job_id, "total_pages": PAGES, "completed_pages": 0, "previews": []}
+        state["error"] = str(e)
+        state["message"] = "Generation failed. Please try again."
+        state["done"] = True
+        _write_state(job_id, state)
 
 # -----------------------------------------------------------------------------
 # Routes
@@ -1952,7 +2004,15 @@ def handle_join_job(data):
 def status_api(job_id: str):
     s = _read_state(job_id)
     if not s:
-        abort(404)
+        return jsonify({
+            "job_id": job_id,
+            "done": True,
+            "error": "Job not found. The server may have restarted while your story was generating.",
+            "message": "Job not found (server restart). Please start a new story generation.",
+            "completed_pages": 0,
+            "total_pages": PAGES,
+            "previews": [],
+        }), 404
     # Build the download URL here (we HAVE app/request context).
     if s.get("done"):
         # Always use job download route - it can find the PDF via state file
@@ -2329,14 +2389,18 @@ def login_google():
     if not OAUTH_AVAILABLE or not oauth:
         abort(500, "Google OAuth not configured")
     
-    # Use explicit redirect URI to avoid mismatch issues
-    # Check if custom redirect URI is set, otherwise use localhost (Google's preferred format)
+    # Use explicit redirect URI to avoid mismatch issues.
+    # On Render, default to APP_URL / RENDER_EXTERNAL_URL instead of localhost.
     custom_redirect = os.getenv("GOOGLE_REDIRECT_URI")
     if custom_redirect:
         redirect_uri = custom_redirect
     else:
-        # Default to localhost instead of 127.0.0.1 for better Google OAuth compatibility
-        base_url = os.getenv("OAUTH_BASE_URL", "http://localhost:5000")
+        base_url = (
+            os.getenv("OAUTH_BASE_URL")
+            or os.getenv("APP_URL")
+            or os.getenv("RENDER_EXTERNAL_URL")
+            or request.url_root.rstrip("/")
+        )
         redirect_uri = f"{base_url}/auth/google/callback"
     
     # Ensure session is properly configured before OAuth redirect
@@ -2389,13 +2453,18 @@ def login_apple():
     if not OAUTH_AVAILABLE or not oauth:
         abort(500, "Apple OAuth not configured")
     
-    # Use explicit redirect URI to avoid mismatch issues
+    # Use explicit redirect URI to avoid mismatch issues.
+    # On Render, default to APP_URL / RENDER_EXTERNAL_URL instead of localhost.
     custom_redirect = os.getenv("APPLE_REDIRECT_URI")
     if custom_redirect:
         redirect_uri = custom_redirect
     else:
-        # Default to localhost for consistency
-        base_url = os.getenv("OAUTH_BASE_URL", "http://localhost:5000")
+        base_url = (
+            os.getenv("OAUTH_BASE_URL")
+            or os.getenv("APP_URL")
+            or os.getenv("RENDER_EXTERNAL_URL")
+            or request.url_root.rstrip("/")
+        )
         redirect_uri = f"{base_url}/auth/apple/callback"
     
     # Ensure session is properly configured before OAuth redirect

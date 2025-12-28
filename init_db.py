@@ -45,16 +45,6 @@ def main():
         print("This is normal if database is not configured yet")
         return
     
-    # Check if database is available
-    try:
-        import database
-        if not hasattr(database, 'DB_AVAILABLE') or not database.DB_AVAILABLE:
-            print("WARNING: Database module not available - skipping initialization")
-            return
-    except ImportError:
-        print("WARNING: Database module not available - skipping initialization")
-        return
-    
     # Initialize schema
     try:
         if not database.init_database():

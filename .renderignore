@@ -51,3 +51,6 @@ runtime/
 *.md
 !README.md
 
+# Ensure Render can detect Python runtime pin (keep this file!)
+!runtime.txt
+

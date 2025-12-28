@@ -249,41 +249,44 @@ def init_database():
         
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            
-            # Execute schema SQL
-            # PostgreSQL and MySQL handle multi-statement execution differently
-            if db_type == "postgresql":
-                # PostgreSQL: Execute as single statement (psycopg2 handles it)
-                cursor.execute(schema_sql)
-            else:
-                # MySQL: Split by semicolon and execute one at a time
-                statements = []
-                current_statement = []
-                
-                for line in schema_sql.split('\n'):
-                    # Remove inline comments
-                    if '--' in line:
-                        line = line[:line.index('--')]
-                    line = line.strip()
-                    
-                    if line:
-                        current_statement.append(line)
-                        if line.endswith(';'):
-                            statement = ' '.join(current_statement).rstrip(';').strip()
-                            if statement:
-                                statements.append(statement)
-                            current_statement = []
-                
-                for statement in statements:
-                    if statement:
-                        try:
-                            cursor.execute(statement)
-                        except Exception as e:
-                            error_str = str(e).lower()
-                            if "already exists" in error_str or "duplicate" in error_str:
-                                logging.debug(f"[db] Table/index already exists, skipping: {statement[:50]}...")
-                            else:
-                                logging.warning(f"[db] Statement execution warning: {e}")
+
+            # Execute schema SQL.
+            # psycopg2 does NOT support executing multiple SQL statements in one cursor.execute call,
+            # so we split statements for PostgreSQL too.
+            statements = []
+            current_statement = []
+
+            for line in schema_sql.split('\n'):
+                # Remove inline comments
+                if '--' in line:
+                    line = line[:line.index('--')]
+                line = line.strip()
+
+                if line:
+                    current_statement.append(line)
+                    if line.endswith(';'):
+                        statement = ' '.join(current_statement).rstrip(';').strip()
+                        if statement:
+                            statements.append(statement)
+                        current_statement = []
+
+            # Flush last statement if schema doesn't end with semicolon
+            if current_statement:
+                statement = ' '.join(current_statement).rstrip(';').strip()
+                if statement:
+                    statements.append(statement)
+
+            for statement in statements:
+                if not statement:
+                    continue
+                try:
+                    cursor.execute(statement)
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if "already exists" in error_str or "duplicate" in error_str:
+                        logging.debug(f"[db] Table/index already exists, skipping: {statement[:50]}...")
+                    else:
+                        logging.warning(f"[db] Statement execution warning: {e}")
             
             conn.commit()
             cursor.close()
