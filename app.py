@@ -1550,21 +1550,22 @@ def assemble_pdf(pages: List[Image.Image], out_path: Optional[str] = None) -> by
     return pdf_data
 
 
-def assemble_pdf_from_image_files(image_paths: List[str], out_path: Optional[str] = None) -> bytes:
-    """Assemble PDF from image file paths without holding full-size PIL images in memory."""
+def assemble_pdf_from_image_files(image_paths: List[str], out_path: str) -> str:
+    """
+    Assemble PDF from image file paths, writing directly to disk (low-memory).
+
+    Returns:
+        The output PDF path.
+    """
     full_pts = int(round(FULLPAGE_IN * 72))
-    buf = io.BytesIO()
-    c = rl_canvas.Canvas(buf, pagesize=(full_pts, full_pts))
+    # Write directly to a file to avoid holding the entire PDF in memory.
+    c = rl_canvas.Canvas(out_path, pagesize=(full_pts, full_pts), pageCompression=1)
     for p in image_paths:
-        # reportlab can accept a filename; ImageReader adds compatibility
-        c.drawImage(ImageReader(p), 0, 0, width=full_pts, height=full_pts)
+        # Let reportlab read the image file directly; avoid ImageReader caching.
+        c.drawImage(p, 0, 0, width=full_pts, height=full_pts)
         c.showPage()
     c.save()
-    pdf_data = buf.getvalue()
-    if out_path:
-        with open(out_path, "wb") as f:
-            f.write(pdf_data)
-    return pdf_data
+    return out_path
 
 # -----------------------------------------------------------------------------
 # Runtime job state (progress bar + messages)
@@ -1602,7 +1603,8 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
     }
     _write_state(job_id, state)
 
-    images: List[Optional[Image.Image]] = [None] * PAGES
+    # Store per-page preview file paths (not PIL Images) to keep memory low.
+    images: List[Optional[str]] = [None] * PAGES
     state_lock = threading.Lock()
     start_time = time.time()
 
@@ -1695,7 +1697,15 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
                         # Use placeholder for this page
                         page = outline["pages"][page_idx]
                         placeholder = _placeholder_render(upload_path, page)
-                        images[page_idx] = placeholder
+                        page_number = page.get("page_number", page_idx + 1)
+                        fn = f"{job_id}_p{page_number:02d}.jpg"
+                        outp = os.path.join(PREVIEW_DIR, fn)
+                        placeholder.save(outp, "JPEG", quality=88)
+                        try:
+                            placeholder.close()
+                        except Exception:
+                            pass
+                        images[page_idx] = outp
                         failed_count += 1
             except Exception as e:
                 # TimeoutError from as_completed or other unexpected executor error
@@ -1732,14 +1742,23 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
             elapsed = time.time() - start_time
             logging.info(f"[worker] Parallel generation finished in {elapsed:.1f}s ({completed_count} succeeded, {failed_count} failed/placeholder)")
 
-        # Step 3: compile PDF from preview files (low-memory)
+        # Step 3: compile PDF from preview files (disk-based, low-memory)
         image_files: List[str] = []
         for idx in range(PAGES):
-            # Prefer the known preview path for this job/page
             page_number = outline["pages"][idx].get("page_number", idx + 1)
             expected = os.path.join(PREVIEW_DIR, f"{job_id}_p{page_number:02d}.jpg")
+            # If somehow missing, generate a placeholder now.
+            if not os.path.exists(expected):
+                placeholder = _placeholder_render(upload_path, outline["pages"][idx])
+                placeholder.save(expected, "JPEG", quality=88)
+                try:
+                    placeholder.close()
+                except Exception:
+                    pass
             image_files.append(expected)
-        pdf_data = assemble_pdf_from_image_files(image_files)
+
+        state["message"] = "Compiling PDF…"
+        _write_state(job_id, state)
 
         # Step 4: Save book with proper naming and metadata
         story_id = get_story_id_by_gender(gender)
@@ -1755,27 +1774,34 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
                 timestamp = int(datetime.now(timezone.utc).timestamp())
                 pdf_filename, pdf_relative_path = storage.generate_filename(user_id, story_id)
 
-                # Save PDF using storage system
+                # Save PDF using storage system (avoid holding bytes in memory).
                 if storage.STORAGE_TYPE == "local":
-                    # For local storage, save to user directory
                     user_dir = storage.get_user_storage_dir(user_id)
                     pdf_full_path = os.path.join(user_dir, pdf_filename)
-                    with open(pdf_full_path, "wb") as f:
-                        f.write(pdf_data)
+                    assemble_pdf_from_image_files(image_files, pdf_full_path)
                     logging.info(f"[worker] PDF saved to: {pdf_full_path}")
                 else:
-                    # For cloud storage, use storage.save_pdf
-                    storage.save_pdf(pdf_data, pdf_relative_path)
+                    # Build to a temp path then upload bytes (cloud storage APIs here take bytes)
+                    tmp_pdf = os.path.join(OUTPUT_DIR, f"storybook_{job_id}.pdf")
+                    assemble_pdf_from_image_files(image_files, tmp_pdf)
+                    with open(tmp_pdf, "rb") as f:
+                        storage.save_pdf(f.read(), pdf_relative_path)
 
                 # Generate thumbnail from first page (best-effort)
                 try:
                     thumb_filename, thumbnail_relative_path = storage.generate_thumbnail_path(user_id, story_id, timestamp)
 
                     if storage.STORAGE_TYPE == "local":
-                        thumbnail = final_images[0].resize((300, 300), Image.LANCZOS)
+                        first_preview = image_files[0]
+                        thumbnail = Image.open(first_preview).convert("RGB")
+                        thumbnail = thumbnail.resize((300, 300), Image.LANCZOS)
                         thumb_full_path = os.path.join(BASE_DIR, "static", thumbnail_relative_path)
                         os.makedirs(os.path.dirname(thumb_full_path), exist_ok=True)
                         thumbnail.save(thumb_full_path, "JPEG", quality=85)
+                        try:
+                            thumbnail.close()
+                        except Exception:
+                            pass
                     else:
                         thumbnail_relative_path = None  # Cloud thumbnail upload not implemented here
                 except Exception as e:
@@ -1799,7 +1825,11 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
                     # Log book completion
                     import logger as app_logger
                     total_duration = time.time() - start_time
-                    pdf_size = len(pdf_data)
+                    try:
+                        # If local, we wrote directly; else we built tmp_pdf above.
+                        pdf_size = os.path.getsize(pdf_full_path) if storage.STORAGE_TYPE == "local" else os.path.getsize(tmp_pdf)
+                    except Exception:
+                        pdf_size = 0
                     app_logger.log_book_completed(book['book_id'], total_duration, pdf_size, user_id)
                 else:
                     logging.warning("[worker] Failed to save book to database (continuing)")
@@ -1815,8 +1845,7 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
         else:
             # Save to temporary location if no user
             temp_pdf_path = os.path.join(OUTPUT_DIR, f"storybook_{job_id}.pdf")
-            with open(temp_pdf_path, "wb") as f:
-                f.write(pdf_data)
+            assemble_pdf_from_image_files(image_files, temp_pdf_path)
             pdf_relative_path = f"storybook_{job_id}.pdf"
             state["pdf_path"] = pdf_relative_path
 
