@@ -1229,7 +1229,7 @@ def _generate_single_image_thread(
     child_description: str,
     job_id: str,
     state_lock: threading.Lock
-) -> Tuple[int, Optional[Image.Image], Optional[str]]:
+) -> Tuple[int, Optional[str], Optional[str]]:
     """Generate a single image in a thread with progress tracking.
     
     Args:
@@ -1242,7 +1242,7 @@ def _generate_single_image_thread(
         state_lock: Thread lock for state updates
     
     Returns:
-        Tuple of (page_index, image, error_message)
+        Tuple of (page_index, preview_file_path, error_message)
     """
     page_idx, page = page_data
     page_number = page.get("page_number", page_idx + 1)
@@ -1290,6 +1290,10 @@ def _generate_single_image_thread(
         fn = f"{job_id}_p{page_number:02d}.jpg"
         outp = os.path.join(PREVIEW_DIR, fn)
         image.save(outp, "JPEG", quality=88)
+        try:
+            image.close()
+        except Exception:
+            pass
         
         # Update state thread-safely
         with state_lock:
@@ -1336,7 +1340,7 @@ def _generate_single_image_thread(
                     logging.warning(f"[socket] Failed to emit page update: {e}")
         
         logging.info(f"[thread-{page_idx}] ✓ Completed page {page_number}")
-        return (page_idx, image, None)
+        return (page_idx, outp, None)
         
     except Exception as e:
         error_msg = f"Exception in thread for page {page_number}: {str(e)}"
@@ -1545,6 +1549,23 @@ def assemble_pdf(pages: List[Image.Image], out_path: Optional[str] = None) -> by
     
     return pdf_data
 
+
+def assemble_pdf_from_image_files(image_paths: List[str], out_path: Optional[str] = None) -> bytes:
+    """Assemble PDF from image file paths without holding full-size PIL images in memory."""
+    full_pts = int(round(FULLPAGE_IN * 72))
+    buf = io.BytesIO()
+    c = rl_canvas.Canvas(buf, pagesize=(full_pts, full_pts))
+    for p in image_paths:
+        # reportlab can accept a filename; ImageReader adds compatibility
+        c.drawImage(ImageReader(p), 0, 0, width=full_pts, height=full_pts)
+        c.showPage()
+    c.save()
+    pdf_data = buf.getvalue()
+    if out_path:
+        with open(out_path, "wb") as f:
+            f.write(pdf_data)
+    return pdf_data
+
 # -----------------------------------------------------------------------------
 # Runtime job state (progress bar + messages)
 # -----------------------------------------------------------------------------
@@ -1630,10 +1651,11 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
                 for future in as_completed(future_to_page, timeout=timeout_seconds):
                     page_idx = future_to_page[future]
                     try:
-                        idx, image, error_msg = future.result(timeout=1)
+                        idx, preview_file, error_msg = future.result(timeout=1)
                         
-                        if image is not None:
-                            images[idx] = image
+                        if preview_file is not None:
+                            # We avoid keeping full-size PIL images in memory; previews are written by the thread.
+                            images[idx] = preview_file
                             completed_count += 1
                             logging.info(f"[worker] Page {idx + 1} completed ({completed_count}/{PAGES})")
                         else:
@@ -1641,13 +1663,17 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
                             logging.warning(f"[worker] Page {idx + 1} failed, using placeholder: {error_msg}")
                             page = outline["pages"][idx]
                             placeholder = _placeholder_render(upload_path, page)
-                            images[idx] = placeholder
+                            fn = f"{job_id}_p{page.get('page_number', idx + 1):02d}.jpg"
+                            outp = os.path.join(PREVIEW_DIR, fn)
+                            placeholder.save(outp, "JPEG", quality=88)
+                            try:
+                                placeholder.close()
+                            except Exception:
+                                pass
+                            images[idx] = outp
                             
                             # Save placeholder preview
                             page_number = page.get("page_number", idx + 1)
-                            fn = f"{job_id}_p{page_number:02d}.jpg"
-                            outp = os.path.join(PREVIEW_DIR, fn)
-                            placeholder.save(outp, "JPEG", quality=88)
                             
                             # Update state
                             with state_lock:
@@ -1681,12 +1707,15 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
                     continue
                 page = outline["pages"][idx]
                 placeholder = _placeholder_render(upload_path, page)
-                images[idx] = placeholder
-                
                 page_number = page.get("page_number", idx + 1)
                 fn = f"{job_id}_p{page_number:02d}.jpg"
                 outp = os.path.join(PREVIEW_DIR, fn)
                 placeholder.save(outp, "JPEG", quality=88)
+                try:
+                    placeholder.close()
+                except Exception:
+                    pass
+                images[idx] = outp
                 
                 with state_lock:
                     state = _read_state(job_id)
@@ -1703,12 +1732,14 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
             elapsed = time.time() - start_time
             logging.info(f"[worker] Parallel generation finished in {elapsed:.1f}s ({completed_count} succeeded, {failed_count} failed/placeholder)")
 
-        # Convert to non-optional list for type safety (guaranteed full length via placeholders above)
-        final_images: List[Image.Image] = [img if img is not None else _placeholder_render(upload_path, outline["pages"][idx])
-                                           for idx, img in enumerate(images)]
-
-        # Step 3: compile PDF
-        pdf_data = assemble_pdf(final_images)
+        # Step 3: compile PDF from preview files (low-memory)
+        image_files: List[str] = []
+        for idx in range(PAGES):
+            # Prefer the known preview path for this job/page
+            page_number = outline["pages"][idx].get("page_number", idx + 1)
+            expected = os.path.join(PREVIEW_DIR, f"{job_id}_p{page_number:02d}.jpg")
+            image_files.append(expected)
+        pdf_data = assemble_pdf_from_image_files(image_files)
 
         # Step 4: Save book with proper naming and metadata
         story_id = get_story_id_by_gender(gender)
