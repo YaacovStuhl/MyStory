@@ -1581,6 +1581,10 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
     }
     _write_state(job_id, state)
 
+    images: List[Optional[Image.Image]] = [None] * PAGES
+    state_lock = threading.Lock()
+    start_time = time.time()
+
     try:
         # Step 1: story outline (JSON) - loaded from vetted config files
         outline = ai_generate_story_outline(child_name, gender)
@@ -1597,13 +1601,9 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
         max_workers = min(12, int(os.getenv("MAX_IMAGE_WORKERS", "6")))  # Default 6 concurrent, max 12
         timeout_seconds = int(os.getenv("IMAGE_GEN_TIMEOUT_SECONDS", "600"))  # default 10 minutes
         
-        images: List[Optional[Image.Image]] = [None] * PAGES
-        state_lock = threading.Lock()
-        
         # Prepare page data with indices
         page_data_list = [(idx, page) for idx, page in enumerate(outline["pages"])]
-        
-        start_time = time.time()
+
         logging.info(f"[worker] Starting parallel image generation with {max_workers} workers, timeout={timeout_seconds}s")
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -1700,160 +1700,107 @@ def worker_generate(job_id: str, upload_path: str, child_name: str, gender: str,
             
             elapsed = time.time() - start_time
             logging.info(f"[worker] Parallel generation finished in {elapsed:.1f}s ({completed_count} succeeded, {failed_count} failed/placeholder)")
-    
-    # Ensure all images are present (fill any missing with placeholders)
-    for idx, img in enumerate(images):
-        if img is None:
-            logging.warning(f"[worker] Page {idx + 1} missing, generating placeholder")
-            page = outline["pages"][idx]
-            placeholder = _placeholder_render(upload_path, page)
-            images[idx] = placeholder
-            
-            # Save placeholder preview
-            page_number = page.get("page_number", idx + 1)
-            fn = f"{job_id}_p{page_number:02d}.jpg"
-            outp = os.path.join(PREVIEW_DIR, fn)
-            placeholder.save(outp, "JPEG", quality=88)
-            
-            # Update state
-            with state_lock:
-                state = _read_state(job_id)
-                if state:
-                    state["completed_pages"] = state.get("completed_pages", 0) + 1
-                    previews = state.get("previews", [])
-                    preview_path = f"previews/{fn}"
-                    if preview_path not in previews:
-                        previews.append(preview_path)
-                    state["previews"] = previews
-                    state["message"] = f"Creating pages… {state['completed_pages']}/{PAGES} complete"
-                    _write_state(job_id, state)
-    
-    # Convert to non-optional list for type safety
-    final_images: List[Image.Image] = [img for img in images if img is not None]
-    if len(final_images) != PAGES:
-        logging.error(f"[worker] Only {len(final_images)}/{PAGES} images generated, filling with placeholders")
-        final_images = []
-        for idx in range(PAGES):
-            if images[idx] is not None:
-                final_images.append(images[idx])
-            else:
-                page = outline["pages"][idx]
-                final_images.append(_placeholder_render(upload_path, page))
 
-    # Step 3: compile PDF
-    pdf_data = assemble_pdf(final_images)
-    
-    # Step 4: Save book with proper naming and metadata
-    story_id = get_story_id_by_gender(gender)
-    pdf_relative_path = None
-    thumbnail_relative_path = None
-    
-    if DB_AVAILABLE and user_id:
-        try:
-            # Import storage utilities
-            import storage
-            
-            # Generate filename: {user_id}_{timestamp}_{story_id}.pdf
-            timestamp = int(datetime.now(timezone.utc).timestamp())
-            pdf_filename, pdf_relative_path = storage.generate_filename(user_id, story_id)
-            
-            # Save PDF using storage system
-            if storage.STORAGE_TYPE == "local":
-                # For local storage, save to user directory
-                user_dir = storage.get_user_storage_dir(user_id)
-                pdf_full_path = os.path.join(user_dir, pdf_filename)
-                with open(pdf_full_path, "wb") as f:
-                    f.write(pdf_data)
-                logging.info(f"[worker] PDF saved to: {pdf_full_path}")
-            else:
-                # For cloud storage, use storage.save_pdf
-                storage.save_pdf(pdf_data, pdf_relative_path)
-            
-            # Generate thumbnail from first page
+        # Convert to non-optional list for type safety (guaranteed full length via placeholders above)
+        final_images: List[Image.Image] = [img if img is not None else _placeholder_render(upload_path, outline["pages"][idx])
+                                           for idx, img in enumerate(images)]
+
+        # Step 3: compile PDF
+        pdf_data = assemble_pdf(final_images)
+
+        # Step 4: Save book with proper naming and metadata
+        story_id = get_story_id_by_gender(gender)
+        pdf_relative_path = None
+        thumbnail_relative_path = None
+
+        if DB_AVAILABLE and user_id:
             try:
-                thumb_filename, thumbnail_relative_path = storage.generate_thumbnail_path(user_id, story_id, timestamp)
-                
+                # Import storage utilities
+                import storage
+
+                # Generate filename: {user_id}_{timestamp}_{story_id}.pdf
+                timestamp = int(datetime.now(timezone.utc).timestamp())
+                pdf_filename, pdf_relative_path = storage.generate_filename(user_id, story_id)
+
+                # Save PDF using storage system
                 if storage.STORAGE_TYPE == "local":
-                    # Create thumbnail from first page image
-                    if final_images and len(final_images) > 0:
+                    # For local storage, save to user directory
+                    user_dir = storage.get_user_storage_dir(user_id)
+                    pdf_full_path = os.path.join(user_dir, pdf_filename)
+                    with open(pdf_full_path, "wb") as f:
+                        f.write(pdf_data)
+                    logging.info(f"[worker] PDF saved to: {pdf_full_path}")
+                else:
+                    # For cloud storage, use storage.save_pdf
+                    storage.save_pdf(pdf_data, pdf_relative_path)
+
+                # Generate thumbnail from first page (best-effort)
+                try:
+                    thumb_filename, thumbnail_relative_path = storage.generate_thumbnail_path(user_id, story_id, timestamp)
+
+                    if storage.STORAGE_TYPE == "local":
                         thumbnail = final_images[0].resize((300, 300), Image.LANCZOS)
                         thumb_full_path = os.path.join(BASE_DIR, "static", thumbnail_relative_path)
                         os.makedirs(os.path.dirname(thumb_full_path), exist_ok=True)
                         thumbnail.save(thumb_full_path, "JPEG", quality=85)
-                        logging.info(f"[worker] Thumbnail saved to: {thumb_full_path}")
                     else:
-                        thumbnail_relative_path = None
+                        thumbnail_relative_path = None  # Cloud thumbnail upload not implemented here
+                except Exception as e:
+                    logging.warning(f"[worker] Failed to create thumbnail: {e}")
+                    thumbnail_relative_path = None
+
+                # Save book to database with metadata
+                book = database.create_book(
+                    user_id=user_id,
+                    story_id=story_id,
+                    child_name=child_name,
+                    pdf_path=pdf_relative_path,
+                    thumbnail_path=thumbnail_relative_path
+                )
+
+                if book:
+                    logging.info(f"[worker] Book saved to database: book_id={book['book_id']}")
+                    state["book_id"] = book['book_id']
+                    state["pdf_path"] = pdf_relative_path
+
+                    # Log book completion
+                    import logger as app_logger
+                    total_duration = time.time() - start_time
+                    pdf_size = len(pdf_data)
+                    app_logger.log_book_completed(book['book_id'], total_duration, pdf_size, user_id)
                 else:
-                    # For cloud, would need to upload thumbnail
-                    if final_images and len(final_images) > 0:
-                        thumbnail = final_images[0].resize((300, 300), Image.LANCZOS)
-                        thumb_buf = io.BytesIO()
-                        thumbnail.save(thumb_buf, "JPEG", quality=85)
-                        # Would upload to cloud storage here
-                        thumbnail_relative_path = None  # Placeholder
+                    logging.warning("[worker] Failed to save book to database (continuing)")
+                    state["pdf_path"] = pdf_relative_path
             except Exception as e:
-                logging.warning(f"[worker] Failed to create thumbnail: {e}")
-                thumbnail_relative_path = None
-            
-            # Save book to database with metadata
-            book = database.create_book(
-                user_id=user_id,
-                story_id=story_id,
-                child_name=child_name,
-                pdf_path=pdf_relative_path,
-                thumbnail_path=thumbnail_relative_path
-            )
-            
-            if book:
-                logging.info(f"[worker] Book saved to database: book_id={book['book_id']}")
-                # Store book_id and pdf_path in state for download URL generation
-                state["book_id"] = book['book_id']
-                state["pdf_path"] = pdf_relative_path  # Store path for job download route fallback
-                _write_state(job_id, state)
-                # Log book completion
-                import logger as app_logger
-                total_duration = time.time() - start_time
-                pdf_size = len(pdf_data) if 'pdf_data' in locals() else 0
-                app_logger.log_book_completed(book['book_id'], total_duration, pdf_size, user_id)
-            else:
-                logging.warning(f"[worker] Failed to save book to database")
-                # Store PDF path for download even if book save failed
-                state["pdf_path"] = pdf_relative_path
-                
-        except Exception as e:
-            logging.error(f"[worker] Error saving book: {e}")
-            import traceback
-            logging.debug(traceback.format_exc())
-            if DB_AVAILABLE:
-                database.create_log(user_id, "ERROR", f"Failed to save book: {str(e)}")
-    else:
-        # Save to temporary location if no user
-        temp_pdf_path = os.path.join(OUTPUT_DIR, f"storybook_{job_id}.pdf")
-        with open(temp_pdf_path, "wb") as f:
-            f.write(pdf_data)
-        pdf_relative_path = f"storybook_{job_id}.pdf"
-        
-        if DB_AVAILABLE:
-            database.create_log(None, "INFO", f"Book generated without user: {child_name}'s storybook (job_id={job_id})")
+                logging.error(f"[worker] Error saving book: {e}")
+                import traceback
+                logging.debug(traceback.format_exc())
+                try:
+                    database.create_log(user_id, "ERROR", f"Failed to save book: {str(e)}")
+                except Exception:
+                    pass
+        else:
+            # Save to temporary location if no user
+            temp_pdf_path = os.path.join(OUTPUT_DIR, f"storybook_{job_id}.pdf")
+            with open(temp_pdf_path, "wb") as f:
+                f.write(pdf_data)
+            pdf_relative_path = f"storybook_{job_id}.pdf"
+            state["pdf_path"] = pdf_relative_path
 
         state["done"] = True
-    state["message"] = "Finished"
-    # Store PDF path for download if not using database book
-    if not (DB_AVAILABLE and user_id):
-        state["pdf_path"] = pdf_relative_path
+        state["message"] = "Finished"
         _write_state(job_id, state)
-    
-    # Emit WebSocket event for job completion (with app context)
+
+        # Emit WebSocket event for job completion (best-effort)
         try:
-        with app.app_context():
-            # Always use job download route - it can find the PDF via state file
-            download_url = url_for('download_pdf', job_id=job_id, _external=True)
-            socketio.emit('job_complete', {
-                'total': PAGES,
-                'download_url': download_url
-            }, room=job_id)
+            with app.app_context():
+                download_url = url_for('download_pdf', job_id=job_id, _external=True)
+                socketio.emit('job_complete', {
+                    'total': PAGES,
+                    'download_url': download_url
+                }, room=job_id)
         except Exception as e:
-        logging.warning(f"[socket] Failed to emit job complete: {e}")
+            logging.warning(f"[socket] Failed to emit job complete: {e}")
     except Exception as e:
         # Ensure the UI never spins forever on errors
         logging.error(f"[worker] Fatal error generating book (job_id={job_id}): {e}")
