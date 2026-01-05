@@ -9,8 +9,18 @@ echo "Current directory: $(pwd)"
 echo "Directory contents:"
 ls -la | head -20
 
-# Try to find app.py
-APP_PATH=$(find . -name "app.py" -type f 2>/dev/null | head -1)
+# Prefer the repo's own app.py, and avoid accidentally grabbing Flask's internal
+# `site-packages/flask/app.py` from a virtualenv.
+if [ -f "./app.py" ]; then
+    APP_PATH="./app.py"
+else
+    # Search for app.py but ignore virtualenvs and site-packages.
+    APP_PATH=$(
+        find . \
+            -type d \( -name ".venv" -o -name "venv" -o -name "__pycache__" -o -name "site-packages" \) -prune -o \
+            -type f -name "app.py" -print 2>/dev/null | head -1
+    )
+fi
 
 if [ -z "$APP_PATH" ]; then
     echo "ERROR: app.py not found anywhere"
